@@ -4,7 +4,7 @@ import {
   addFollowUpQuestion,
   clearNodeAnswer,
   getNode,
-  getOrCreateDefaultThread,
+  getOrCreateUserThread,
   getThreadState,
   markNodeAnswered,
   markNodeProcessing
@@ -18,18 +18,21 @@ export async function handleHealth() {
   return { ok: true, ...authConfig(), ...storageConfig() };
 }
 
-export async function handleGetInterview() {
-  return getOrCreateDefaultThread();
+export async function handleGetInterview(userEmail: string) {
+  return getOrCreateUserThread(userEmail);
 }
 
-async function saveAnswerForNode(input: {
-  questionId: string;
-  audioBuffer: Buffer;
-  mimeType: string;
-  originalFilename: string;
-  sourceByteLength: number;
-}) {
-  const node = await getNode(input.questionId);
+async function saveAnswerForNode(
+  userEmail: string,
+  input: {
+    questionId: string;
+    audioBuffer: Buffer;
+    mimeType: string;
+    originalFilename: string;
+    sourceByteLength: number;
+  }
+) {
+  const node = await getNode(userEmail, input.questionId);
   if (!node) {
     return { status: 404 as const, body: { error: "Question not found." } };
   }
@@ -58,7 +61,7 @@ async function saveAnswerForNode(input: {
   };
 
   const transcript = await transcribeAudio(prepared.buffer, prepared.filename, prepared.contentType);
-  const answeredNode = await markNodeAnswered({
+  const answeredNode = await markNodeAnswered(userEmail, {
     id: node.id,
     transcript,
     mp3Url: uploaded.url,
@@ -75,11 +78,11 @@ async function saveAnswerForNode(input: {
     audioObjectName: uploaded.objectName
   });
 
-  await appendLedgerEvent(ledgerFromNode(answeredNode, "response_saved"));
+  await appendLedgerEvent(userEmail, ledgerFromNode(answeredNode, "response_saved"));
 
-  const currentState = await getThreadState(answeredNode.threadId);
+  const currentState = await getThreadState(userEmail, answeredNode.threadId);
   const followUpQuestion = await generateFollowUp(currentState.nodes, answeredNode);
-  const followUpNode = await addFollowUpQuestion({
+  const followUpNode = await addFollowUpQuestion(userEmail, {
     threadId: answeredNode.threadId,
     parentQuestionId: answeredNode.id,
     question: followUpQuestion,
@@ -90,8 +93,8 @@ async function saveAnswerForNode(input: {
   });
 
   if (followUpNode) {
-    await appendLedgerEvent(ledgerFromNode(followUpNode, "followup_generated"));
-    await appendLedgerEvent(ledgerFromNode(followUpNode, "question_created"));
+    await appendLedgerEvent(userEmail, ledgerFromNode(followUpNode, "followup_generated"));
+    await appendLedgerEvent(userEmail, ledgerFromNode(followUpNode, "question_created"));
   }
 
   return {
@@ -100,23 +103,26 @@ async function saveAnswerForNode(input: {
       status: "complete",
       answeredNode,
       followUpNode,
-      state: await getThreadState(answeredNode.threadId)
+      state: await getThreadState(userEmail, answeredNode.threadId)
     }
   };
 }
 
-export async function handlePostAnswer(input: {
-  questionId: string;
-  audioBuffer: Buffer;
-  mimeType: string;
-  originalFilename: string;
-  sourceByteLength: number;
-}) {
-  return saveAnswerForNode(input);
+export async function handlePostAnswer(
+  userEmail: string,
+  input: {
+    questionId: string;
+    audioBuffer: Buffer;
+    mimeType: string;
+    originalFilename: string;
+    sourceByteLength: number;
+  }
+) {
+  return saveAnswerForNode(userEmail, input);
 }
 
-export async function handleDeleteAnswer(questionId: string) {
-  const node = await getNode(questionId);
+export async function handleDeleteAnswer(userEmail: string, questionId: string) {
+  const node = await getNode(userEmail, questionId);
   if (!node) {
     return { status: 404 as const, body: { error: "Question not found." } };
   }
@@ -125,29 +131,32 @@ export async function handleDeleteAnswer(questionId: string) {
     await deleteAnswerArtifacts(node.threadId, node);
   }
 
-  const cleared = await clearNodeAnswer(questionId);
+  const cleared = await clearNodeAnswer(userEmail, questionId);
   if (!cleared) {
     return { status: 500 as const, body: { error: "Could not delete the answer." } };
   }
 
-  await appendLedgerEvent(ledgerFromNode(cleared, "response_deleted"));
+  await appendLedgerEvent(userEmail, ledgerFromNode(cleared, "response_deleted"));
 
   return {
     status: 200 as const,
     body: {
-      state: await getThreadState(node.threadId)
+      state: await getThreadState(userEmail, node.threadId)
     }
   };
 }
 
-export async function handlePostAnswerBackground(input: {
-  questionId: string;
-  audioBuffer: Buffer;
-  mimeType: string;
-  originalFilename: string;
-  sourceByteLength: number;
-}) {
-  const node = await getNode(input.questionId);
+export async function handlePostAnswerBackground(
+  userEmail: string,
+  input: {
+    questionId: string;
+    audioBuffer: Buffer;
+    mimeType: string;
+    originalFilename: string;
+    sourceByteLength: number;
+  }
+) {
+  const node = await getNode(userEmail, input.questionId);
   if (!node) {
     return { status: 404 as const, body: { error: "Question not found." } };
   }
@@ -161,7 +170,7 @@ export async function handlePostAnswerBackground(input: {
     contentType: prepared.contentType
   });
 
-  await markNodeProcessing({
+  await markNodeProcessing(userEmail, {
     id: node.id,
     mp3Url: uploaded.url,
     gcsObjectName: uploaded.objectName,
@@ -185,22 +194,25 @@ export async function handlePostAnswerBackground(input: {
     body: {
       status: "processing",
       questionId: node.id,
-      state: await getThreadState(node.threadId)
+      state: await getThreadState(userEmail, node.threadId)
     },
     prepared,
     uploaded
   };
 }
 
-export async function finishBackgroundAnswer(input: {
-  questionId: string;
-  prepared: Awaited<ReturnType<typeof prepareAudioForUpload>>;
-  uploaded: { objectName: string; url: string };
-  originalFilename: string;
-  mimeType: string;
-  sourceByteLength: number;
-}) {
-  const node = await getNode(input.questionId);
+export async function finishBackgroundAnswer(
+  userEmail: string,
+  input: {
+    questionId: string;
+    prepared: Awaited<ReturnType<typeof prepareAudioForUpload>>;
+    uploaded: { objectName: string; url: string };
+    originalFilename: string;
+    mimeType: string;
+    sourceByteLength: number;
+  }
+) {
+  const node = await getNode(userEmail, input.questionId);
   if (!node) {
     return;
   }
@@ -224,7 +236,7 @@ export async function finishBackgroundAnswer(input: {
     input.prepared.filename,
     input.prepared.contentType
   );
-  const answeredNode = await markNodeAnswered({
+  const answeredNode = await markNodeAnswered(userEmail, {
     id: node.id,
     transcript,
     mp3Url: input.uploaded.url,
@@ -241,11 +253,11 @@ export async function finishBackgroundAnswer(input: {
     audioObjectName: input.uploaded.objectName
   });
 
-  await appendLedgerEvent(ledgerFromNode(answeredNode, "response_saved"));
+  await appendLedgerEvent(userEmail, ledgerFromNode(answeredNode, "response_saved"));
 
-  const currentState = await getThreadState(answeredNode.threadId);
+  const currentState = await getThreadState(userEmail, answeredNode.threadId);
   const followUpQuestion = await generateFollowUp(currentState.nodes, answeredNode);
-  const followUpNode = await addFollowUpQuestion({
+  const followUpNode = await addFollowUpQuestion(userEmail, {
     threadId: answeredNode.threadId,
     parentQuestionId: answeredNode.id,
     question: followUpQuestion,
@@ -256,7 +268,7 @@ export async function finishBackgroundAnswer(input: {
   });
 
   if (followUpNode) {
-    await appendLedgerEvent(ledgerFromNode(followUpNode, "followup_generated"));
-    await appendLedgerEvent(ledgerFromNode(followUpNode, "question_created"));
+    await appendLedgerEvent(userEmail, ledgerFromNode(followUpNode, "followup_generated"));
+    await appendLedgerEvent(userEmail, ledgerFromNode(followUpNode, "question_created"));
   }
 }

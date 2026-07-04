@@ -15,6 +15,7 @@ db.pragma("journal_mode = WAL");
 db.exec(`
   CREATE TABLE IF NOT EXISTS threads (
     id TEXT PRIMARY KEY,
+    owner_email TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -35,6 +36,15 @@ db.exec(`
     FOREIGN KEY (parent_question_id) REFERENCES responses(id)
   );
 `);
+
+const threadColumns = db.prepare("PRAGMA table_info(threads)").all() as { name: string }[];
+if (!threadColumns.some((column) => column.name === "owner_email")) {
+  db.exec("ALTER TABLE threads ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''");
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 function rowToThread(row: Record<string, string>): InterviewThread {
   return {
@@ -91,40 +101,56 @@ function hydrateNodes(rows: Record<string, string | null>[]) {
   return preliminary.map((node, index) => rowToNode(rows[index], preliminary, index));
 }
 
-export async function getOrCreateDefaultThread(): Promise<InterviewState> {
-  let threadRow = db.prepare("SELECT * FROM threads ORDER BY created_at LIMIT 1").get() as
-    | Record<string, string>
-    | undefined;
+export async function getOrCreateUserThread(userEmail: string): Promise<InterviewState> {
+  const owner = normalizeEmail(userEmail);
+  let threadRow = db
+    .prepare("SELECT * FROM threads WHERE owner_email = ? ORDER BY created_at LIMIT 1")
+    .get(owner) as Record<string, string> | undefined;
 
   if (!threadRow) {
     const now = new Date().toISOString();
     const threadId = randomUUID();
-    db.prepare("INSERT INTO threads (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)").run(
-      threadId,
-      "Dad's Life Story",
-      now,
-      now
-    );
+    db.prepare(
+      "INSERT INTO threads (id, owner_email, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).run(threadId, owner, "My Life Story", now, now);
 
     const insertQuestion = db.prepare(`
       INSERT INTO responses (
         id, thread_id, parent_question_id, question, transcript, mp3_url,
         gcs_object_name, timestamp, metadata, status
-      ) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?, NULL, 'pending')
+      ) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?, ?, 'pending')
     `);
 
     for (const question of INITIAL_QUESTIONS) {
-      insertQuestion.run(randomUUID(), threadId, question, now);
+      insertQuestion.run(
+        randomUUID(),
+        threadId,
+        question,
+        now,
+        JSON.stringify({ ownerEmail: owner })
+      );
     }
 
     threadRow = db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Record<string, string>;
   }
 
-  return getThreadState(threadRow.id);
+  return getThreadState(userEmail, threadRow.id);
 }
 
-export async function getThreadState(threadId: string): Promise<InterviewState> {
-  const thread = db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Record<string, string>;
+/** @deprecated Use getOrCreateUserThread with an authenticated email. */
+export async function getOrCreateDefaultThread(): Promise<InterviewState> {
+  return getOrCreateUserThread("local-dev@remember-when.local");
+}
+
+export async function getThreadState(userEmail: string, threadId: string): Promise<InterviewState> {
+  const owner = normalizeEmail(userEmail);
+  const thread = db
+    .prepare("SELECT * FROM threads WHERE id = ? AND owner_email = ?")
+    .get(threadId, owner) as Record<string, string> | undefined;
+  if (!thread) {
+    throw new Error("Thread not found.");
+  }
+
   const rows = db
     .prepare("SELECT * FROM responses WHERE thread_id = ? ORDER BY timestamp ASC")
     .all(threadId) as Record<string, string | null>[];
@@ -135,19 +161,32 @@ export async function getThreadState(threadId: string): Promise<InterviewState> 
   };
 }
 
-export async function getNode(id: string): Promise<MemoryNode | undefined> {
-  const row = db.prepare("SELECT * FROM responses WHERE id = ?").get(id) as
-    | Record<string, string | null>
-    | undefined;
+export async function getNode(userEmail: string, id: string): Promise<MemoryNode | undefined> {
+  const owner = normalizeEmail(userEmail);
+  const row = db
+    .prepare(
+      `SELECT r.* FROM responses r
+       JOIN threads t ON t.id = r.thread_id
+       WHERE r.id = ? AND t.owner_email = ?`
+    )
+    .get(id, owner) as Record<string, string | null> | undefined;
   return row ? hydrateNodes([row])[0] : undefined;
 }
 
-export async function markNodeProcessing(input: {
-  id: string;
-  mp3Url: string;
-  gcsObjectName: string;
-  metadata: Record<string, unknown>;
-}) {
+export async function markNodeProcessing(
+  userEmail: string,
+  input: {
+    id: string;
+    mp3Url: string;
+    gcsObjectName: string;
+    metadata: Record<string, unknown>;
+  }
+) {
+  const node = await getNode(userEmail, input.id);
+  if (!node) {
+    return undefined;
+  }
+
   const now = new Date().toISOString();
   db.prepare(
     `UPDATE responses
@@ -155,20 +194,25 @@ export async function markNodeProcessing(input: {
      WHERE id = ?`
   ).run(input.mp3Url, input.gcsObjectName, now, JSON.stringify(input.metadata), input.id);
 
-  const node = await getNode(input.id);
-  if (node) {
-    db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
-  }
-  return node;
+  db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
+  return getNode(userEmail, input.id);
 }
 
-export async function markNodeAnswered(input: {
-  id: string;
-  transcript: string;
-  mp3Url: string;
-  gcsObjectName: string;
-  metadata: Record<string, unknown>;
-}) {
+export async function markNodeAnswered(
+  userEmail: string,
+  input: {
+    id: string;
+    transcript: string;
+    mp3Url: string;
+    gcsObjectName: string;
+    metadata: Record<string, unknown>;
+  }
+) {
+  const node = await getNode(userEmail, input.id);
+  if (!node) {
+    return undefined;
+  }
+
   const now = new Date().toISOString();
   db.prepare(
     `UPDATE responses
@@ -183,15 +227,12 @@ export async function markNodeAnswered(input: {
     input.id
   );
 
-  const node = await getNode(input.id);
-  if (node) {
-    db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
-  }
-  return node;
+  db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
+  return getNode(userEmail, input.id);
 }
 
-export async function markNodeFailed(id: string, message: string) {
-  const node = await getNode(id);
+export async function markNodeFailed(userEmail: string, id: string, message: string) {
+  const node = await getNode(userEmail, id);
   if (!node) {
     return undefined;
   }
@@ -210,19 +251,21 @@ export async function markNodeFailed(id: string, message: string) {
     id
   );
 
-  const updated = await getNode(id);
-  if (updated) {
-    db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, updated.threadId);
-  }
-  return updated;
+  db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
+  return getNode(userEmail, id);
 }
 
-export async function addFollowUpQuestion(input: {
-  threadId: string;
-  parentQuestionId: string;
-  question: string;
-  metadata?: Record<string, unknown>;
-}) {
+export async function addFollowUpQuestion(
+  userEmail: string,
+  input: {
+    threadId: string;
+    parentQuestionId: string;
+    question: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  await getThreadState(userEmail, input.threadId);
+
   const now = new Date().toISOString();
   const id = randomUUID();
   db.prepare(
@@ -239,11 +282,16 @@ export async function addFollowUpQuestion(input: {
     input.metadata ? JSON.stringify(input.metadata) : null
   );
   db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, input.threadId);
-  const state = await getThreadState(input.threadId);
+  const state = await getThreadState(userEmail, input.threadId);
   return state.nodes.find((node) => node.id === id) ?? undefined;
 }
 
-export async function clearNodeAnswer(id: string) {
+export async function clearNodeAnswer(userEmail: string, id: string) {
+  const node = await getNode(userEmail, id);
+  if (!node) {
+    return undefined;
+  }
+
   const now = new Date().toISOString();
   db.prepare(
     `UPDATE responses
@@ -251,9 +299,6 @@ export async function clearNodeAnswer(id: string) {
      WHERE id = ?`
   ).run(now, id);
 
-  const node = await getNode(id);
-  if (node) {
-    db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
-  }
-  return node;
+  db.prepare("UPDATE threads SET updated_at = ? WHERE id = ?").run(now, node.threadId);
+  return getNode(userEmail, id);
 }

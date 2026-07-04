@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "client": "vite --host 127.0.0.1",
+    "client": "vite --host",
     "server": "tsx watch server/index.ts",
     "build": "tsc && vite build",
     "build:netlify": "vite build",
@@ -16,11 +16,13 @@
     "test:e2e:prod": "playwright test --project=production",
     "test:e2e:local": "playwright test --project=local",
     "test:e2e:headed": "playwright test --headed",
-    "verify:production": "node scripts/verify-production.mjs"
+    "verify:production": "node scripts/verify-production.mjs",
+    "preview:netlify": "npx netlify dev"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
     "@netlify/functions": "^5.3.0",
+    "@sendgrid/mail": "^8.1.6",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cors": "^2.8.5",
@@ -28,8 +30,11 @@
     "d3-sankey": "^0.12.3",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "gotrue-js": "^1.0.1",
     "jose": "^6.0.11",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
+    "luxon": "^3.7.2",
     "multer": "^2.2.0",
     "openai": "^4.77.0",
     "react": "^19.0.0",
@@ -44,6 +49,7 @@
     "@types/d3": "^7.4.3",
     "@types/d3-sankey": "^0.12.5",
     "@types/express": "^5.0.0",
+    "@types/luxon": "^3.7.2",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",

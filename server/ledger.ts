@@ -1,11 +1,17 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { useGcsBackend } from "./runtime-env";
-import { appendLineToGcs } from "./storage";
+import { appendLineToGcs, readTextFromGcs } from "./storage";
 import type { MemoryNode } from "./types";
+import { userKeyFromEmail, userLedgerObject } from "./user-key";
 
-const GCS_LEDGER_OBJECT = "app/interview-ledger.jsonl";
-const LOCAL_LEDGER_PATH = process.env.LEDGER_PATH ?? "./data/interview-ledger.jsonl";
+const LOCAL_LEDGER_DIR = process.env.LEDGER_PATH
+  ? path.dirname(process.env.LEDGER_PATH)
+  : "./data/ledgers";
+
+function localLedgerPath(userEmail: string) {
+  return path.join(LOCAL_LEDGER_DIR, `${userKeyFromEmail(userEmail)}.jsonl`);
+}
 
 function useGcsLedger() {
   return useGcsBackend();
@@ -66,16 +72,49 @@ export type LedgerEvent =
       branchLabel: string;
     };
 
-export async function appendLedgerEvent(event: LedgerEvent) {
+export async function appendLedgerEvent(userEmail: string, event: LedgerEvent) {
   const line = JSON.stringify(event);
 
   if (useGcsLedger()) {
-    await appendLineToGcs(GCS_LEDGER_OBJECT, line);
+    await appendLineToGcs(userLedgerObject(userEmail), line);
     return;
   }
 
-  await mkdir(path.dirname(LOCAL_LEDGER_PATH), { recursive: true });
-  await appendFile(LOCAL_LEDGER_PATH, `${line}\n`, "utf8");
+  const ledgerPath = localLedgerPath(userEmail);
+  await mkdir(path.dirname(ledgerPath), { recursive: true });
+  await appendFile(ledgerPath, `${line}\n`, "utf8");
+}
+
+export async function readUserLedgerEvents(userEmail: string): Promise<LedgerEvent[]> {
+  let text: string | null;
+
+  if (useGcsLedger()) {
+    text = await readTextFromGcs(userLedgerObject(userEmail));
+  } else {
+    try {
+      text = await readFile(localLedgerPath(userEmail), "utf8");
+    } catch {
+      text = null;
+    }
+  }
+
+  if (!text?.trim()) {
+    return [];
+  }
+
+  const events: LedgerEvent[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      events.push(JSON.parse(trimmed) as LedgerEvent);
+    } catch {
+      // skip malformed lines
+    }
+  }
+  return events;
 }
 
 export function ledgerFromNode(
@@ -126,7 +165,9 @@ export function ledgerFromNode(
     type: "followup_generated",
     ...base,
     parentQuestionId: node.parentQuestionId ?? "",
-    guidedByQuestionId: String((node.metadata as { guidedByAnswerId?: string } | null)?.guidedByAnswerId ?? node.parentQuestionId ?? ""),
+    guidedByQuestionId: String(
+      (node.metadata as { guidedByAnswerId?: string } | null)?.guidedByAnswerId ?? node.parentQuestionId ?? ""
+    ),
     ...extra
   } as LedgerEvent;
 }

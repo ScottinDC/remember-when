@@ -1,10 +1,11 @@
 import { authConfig } from "./auth";
 import { storageConfig } from "./runtime-env";
 import { readJsonFromGcs } from "./storage";
-import { getOrCreateDefaultThread } from "./store-gcs";
+import { getOrCreateUserThread } from "./store-gcs";
+import { userStateObject } from "./user-key";
 
 const CACHE_TTL_MS = 15_000;
-let cachedInterview: { value: Awaited<ReturnType<typeof getOrCreateDefaultThread>>; at: number } | null = null;
+const cachedInterview = new Map<string, { value: Awaited<ReturnType<typeof getOrCreateUserThread>>; at: number }>();
 
 export async function handleHealth() {
   const storage = storageConfig();
@@ -29,12 +30,22 @@ export async function handleHealth() {
   };
 }
 
-export async function handleGetInterview() {
-  if (cachedInterview && Date.now() - cachedInterview.at < CACHE_TTL_MS) {
-    return cachedInterview.value;
+export async function handleGetInterview(userEmail: string) {
+  const cached = cachedInterview.get(userEmail);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.value;
   }
 
-  const value = await getOrCreateDefaultThread();
-  cachedInterview = { value, at: Date.now() };
+  const value = await getOrCreateUserThread(userEmail);
+  cachedInterview.set(userEmail, { value, at: Date.now() });
   return value;
+}
+
+export function invalidateInterviewCache(userEmail: string) {
+  cachedInterview.delete(userEmail);
+}
+
+/** Probe that per-user storage paths are writable (health check only). */
+export async function probeUserStorage(userEmail: string) {
+  await readJsonFromGcs(userStateObject(userEmail));
 }

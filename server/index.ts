@@ -44,14 +44,15 @@ async function requireAuthMiddleware(
     res.status(auth.status).json({ error: auth.error });
     return;
   }
+  res.locals.userEmail = auth.email;
   next();
 }
 
 app.use("/api", requireAuthMiddleware);
 
-app.get("/api/interview", async (_req, res, next) => {
+app.get("/api/interview", async (req, res, next) => {
   try {
-    res.json(await handleGetInterview());
+    res.json(await handleGetInterview(String(res.locals.userEmail)));
   } catch (error) {
     next(error);
   }
@@ -64,7 +65,7 @@ app.post("/api/responses/:questionId/answer", upload.single("audio"), async (req
       return;
     }
 
-    const result = await handlePostAnswer({
+    const result = await handlePostAnswer(String(res.locals.userEmail), {
       questionId: String(req.params.questionId),
       audioBuffer: req.file.buffer,
       mimeType: req.file.mimetype,
@@ -80,7 +81,7 @@ app.post("/api/responses/:questionId/answer", upload.single("audio"), async (req
 
 app.delete("/api/responses/:questionId/answer", async (req, res, next) => {
   try {
-    const result = await handleDeleteAnswer(String(req.params.questionId));
+    const result = await handleDeleteAnswer(String(res.locals.userEmail), String(req.params.questionId));
     res.status(result.status).json(result.body);
   } catch (error) {
     next(error);

@@ -4,8 +4,7 @@ import { appendLedgerEvent, ledgerFromNode } from "./ledger";
 import { readJsonFromGcs, writeJsonToGcs } from "./storage";
 import { buildTreePath, enrichNode, nextSequenceOrder, nodeDepth } from "./tree";
 import type { InterviewState, InterviewThread, MemoryNode } from "./types";
-
-const STATE_OBJECT = "app/interview-state.json";
+import { userStateObject } from "./user-key";
 
 function normalizeNode(nodes: MemoryNode[], node: MemoryNode, index: number): MemoryNode {
   const sequenceOrder = node.sequenceOrder ?? index + 1;
@@ -23,21 +22,21 @@ function normalizeState(state: InterviewState): InterviewState {
   };
 }
 
-async function loadState(): Promise<InterviewState | null> {
-  const raw = await readJsonFromGcs<InterviewState>(STATE_OBJECT);
+async function loadState(userEmail: string): Promise<InterviewState | null> {
+  const raw = await readJsonFromGcs<InterviewState>(userStateObject(userEmail));
   return raw ? normalizeState(raw) : null;
 }
 
-async function persistState(state: InterviewState) {
-  await writeJsonToGcs(STATE_OBJECT, state);
+async function persistState(userEmail: string, state: InterviewState) {
+  await writeJsonToGcs(userStateObject(userEmail), state);
 }
 
-function createInitialState(): InterviewState {
+function createInitialState(userEmail: string): InterviewState {
   const now = new Date().toISOString();
   const threadId = randomUUID();
   const thread: InterviewThread = {
     id: threadId,
-    title: "Dad's Life Story",
+    title: "My Life Story",
     createdAt: now,
     updatedAt: now
   };
@@ -53,7 +52,7 @@ function createInitialState(): InterviewState {
       mp3Url: null,
       gcsObjectName: null,
       timestamp: now,
-      metadata: null,
+      metadata: { ownerEmail: userEmail.trim().toLowerCase() },
       status: "pending",
       sequenceOrder: index + 1,
       depth: 0,
@@ -67,8 +66,8 @@ function createInitialState(): InterviewState {
   return { thread, nodes };
 }
 
-async function seedLedger(state: InterviewState) {
-  await appendLedgerEvent({
+async function seedLedger(userEmail: string, state: InterviewState) {
+  await appendLedgerEvent(userEmail, {
     type: "thread_initialized",
     threadId: state.thread.id,
     at: state.thread.createdAt,
@@ -76,51 +75,60 @@ async function seedLedger(state: InterviewState) {
   });
 
   for (const node of state.nodes) {
-    await appendLedgerEvent(ledgerFromNode(node, "question_created"));
+    await appendLedgerEvent(userEmail, ledgerFromNode(node, "question_created"));
   }
 }
 
-export async function getOrCreateDefaultThread(): Promise<InterviewState> {
-  const raw = await readJsonFromGcs<InterviewState>(STATE_OBJECT);
-  if (raw) {
-    const normalized = normalizeState(raw);
-    const needsBranchFields = raw.nodes.some((node) => node.generation === undefined || !node.branchRootId);
+export async function getOrCreateUserThread(userEmail: string): Promise<InterviewState> {
+  const existing = await loadState(userEmail);
+  if (existing) {
+    const needsBranchFields = existing.nodes.some((node) => node.generation === undefined || !node.branchRootId);
     if (needsBranchFields) {
-      void persistState(normalized).catch((error) => {
+      const normalized = normalizeState(existing);
+      void persistState(userEmail, normalized).catch((error) => {
         console.error("Failed to migrate interview branch fields:", error);
       });
+      return normalized;
     }
-    return normalized;
+    return existing;
   }
 
-  const initial = createInitialState();
-  await persistState(initial);
-  void seedLedger(initial).catch((error) => {
+  const initial = createInitialState(userEmail);
+  await persistState(userEmail, initial);
+  void seedLedger(userEmail, initial).catch((error) => {
     console.error("Failed to seed interview ledger:", error);
   });
   return initial;
 }
 
-export async function getThreadState(threadId: string): Promise<InterviewState> {
-  const state = await loadState();
+/** @deprecated Use getOrCreateUserThread with an authenticated email. */
+export async function getOrCreateDefaultThread(): Promise<InterviewState> {
+  return getOrCreateUserThread("legacy@remember-when.local");
+}
+
+export async function getThreadState(userEmail: string, threadId: string): Promise<InterviewState> {
+  const state = await loadState(userEmail);
   if (!state || state.thread.id !== threadId) {
     throw new Error("Thread not found.");
   }
   return state;
 }
 
-export async function getNode(id: string): Promise<MemoryNode | undefined> {
-  const state = await loadState();
+export async function getNode(userEmail: string, id: string): Promise<MemoryNode | undefined> {
+  const state = await loadState(userEmail);
   return state?.nodes.find((node) => node.id === id);
 }
 
-export async function markNodeProcessing(input: {
-  id: string;
-  mp3Url: string;
-  gcsObjectName: string;
-  metadata: Record<string, unknown>;
-}) {
-  const state = await loadState();
+export async function markNodeProcessing(
+  userEmail: string,
+  input: {
+    id: string;
+    mp3Url: string;
+    gcsObjectName: string;
+    metadata: Record<string, unknown>;
+  }
+) {
+  const state = await loadState(userEmail);
   if (!state) {
     return undefined;
   }
@@ -140,18 +148,21 @@ export async function markNodeProcessing(input: {
     status: "processing"
   });
   state.thread.updatedAt = now;
-  await persistState(state);
+  await persistState(userEmail, state);
   return state.nodes[index];
 }
 
-export async function markNodeAnswered(input: {
-  id: string;
-  transcript: string;
-  mp3Url: string;
-  gcsObjectName: string;
-  metadata: Record<string, unknown>;
-}) {
-  const state = await loadState();
+export async function markNodeAnswered(
+  userEmail: string,
+  input: {
+    id: string;
+    transcript: string;
+    mp3Url: string;
+    gcsObjectName: string;
+    metadata: Record<string, unknown>;
+  }
+) {
+  const state = await loadState(userEmail);
   if (!state) {
     return undefined;
   }
@@ -172,12 +183,12 @@ export async function markNodeAnswered(input: {
     status: "answered"
   });
   state.thread.updatedAt = now;
-  await persistState(state);
+  await persistState(userEmail, state);
   return state.nodes[index];
 }
 
-export async function markNodeFailed(id: string, message: string) {
-  const state = await loadState();
+export async function markNodeFailed(userEmail: string, id: string, message: string) {
+  const state = await loadState(userEmail);
   if (!state) {
     return undefined;
   }
@@ -198,12 +209,12 @@ export async function markNodeFailed(id: string, message: string) {
     status: "pending"
   });
   state.thread.updatedAt = now;
-  await persistState(state);
+  await persistState(userEmail, state);
   return state.nodes[index];
 }
 
-export async function clearNodeAnswer(id: string) {
-  const state = await loadState();
+export async function clearNodeAnswer(userEmail: string, id: string) {
+  const state = await loadState(userEmail);
   if (!state) {
     return undefined;
   }
@@ -224,17 +235,20 @@ export async function clearNodeAnswer(id: string) {
     status: "pending"
   });
   state.thread.updatedAt = now;
-  await persistState(state);
+  await persistState(userEmail, state);
   return state.nodes[index];
 }
 
-export async function addFollowUpQuestion(input: {
-  threadId: string;
-  parentQuestionId: string;
-  question: string;
-  metadata?: Record<string, unknown>;
-}) {
-  const state = await loadState();
+export async function addFollowUpQuestion(
+  userEmail: string,
+  input: {
+    threadId: string;
+    parentQuestionId: string;
+    question: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  const state = await loadState(userEmail);
   if (!state || state.thread.id !== input.threadId) {
     return undefined;
   }
@@ -269,6 +283,6 @@ export async function addFollowUpQuestion(input: {
 
   state.nodes.push(node);
   state.thread.updatedAt = now;
-  await persistState(state);
+  await persistState(userEmail, state);
   return node;
 }

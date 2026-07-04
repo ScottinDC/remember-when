@@ -32,6 +32,16 @@ export default async (req: Request, context: Context) => {
       return json(await handleHealth());
     }
 
+    if (path === "/api/digest/send" && (req.method === "POST" || req.method === "GET")) {
+      const { runWeeklyDigest, verifyDigestSecret } = await import("../../server/handlers-digest");
+      if (!verifyDigestSecret(req)) {
+        return json({ error: "Invalid digest secret." }, 401);
+      }
+      const force = url.searchParams.get("force") === "1" || url.searchParams.get("force") === "true";
+      const result = await runWeeklyDigest({ force });
+      return json(result, result.ok ? 200 : 500);
+    }
+
     const auth = await requireAuth(req.headers.get("authorization"), req.url, req);
     if ("status" in auth) {
       return json({ error: auth.error }, auth.status);
@@ -43,7 +53,7 @@ export default async (req: Request, context: Context) => {
 
     if (req.method === "GET" && path === "/api/interview") {
       const { handleGetInterview } = await import("../../server/handlers-read");
-      return json(await handleGetInterview());
+      return json(await handleGetInterview(auth.email));
     }
 
     const {
@@ -56,7 +66,7 @@ export default async (req: Request, context: Context) => {
     const answerMatch = path.match(/^\/api\/responses\/([^/]+)\/answer$/);
 
     if (req.method === "DELETE" && answerMatch) {
-      const result = await handleDeleteAnswer(answerMatch[1]);
+      const result = await handleDeleteAnswer(auth.email, answerMatch[1]);
       return json(result.body, result.status);
     }
 
@@ -68,7 +78,7 @@ export default async (req: Request, context: Context) => {
       }
 
       const buffer = Buffer.from(await audio.arrayBuffer());
-      const result = await handlePostAnswerBackground({
+      const result = await handlePostAnswerBackground(auth.email, {
         questionId: answerMatch[1],
         audioBuffer: buffer,
         mimeType: audio.type || "audio/webm",
@@ -80,9 +90,12 @@ export default async (req: Request, context: Context) => {
         return json(result.body, result.status);
       }
 
+      const userEmail = auth.email;
+      const questionId = answerMatch[1];
+
       context.waitUntil(
-        finishBackgroundAnswer({
-          questionId: answerMatch[1],
+        finishBackgroundAnswer(userEmail, {
+          questionId,
           prepared: result.prepared,
           uploaded: result.uploaded,
           originalFilename: audio.name || "answer.webm",
@@ -90,7 +103,7 @@ export default async (req: Request, context: Context) => {
           sourceByteLength: buffer.byteLength
         }).catch(async (error) => {
           const message = error instanceof Error ? error.message : "Unexpected server error.";
-          await markNodeFailed(answerMatch[1], message);
+          await markNodeFailed(userEmail, questionId, message);
         })
       );
 

@@ -80,11 +80,16 @@ await check("1. Homepage HTTP 200", async () => {
 await check("2. OAuth capture script in HTML shell", async () => {
   const res = await fetch(`${BASE}/`);
   const html = await res.text();
-  if (!html.includes("remember-when.auth-token")) {
-    throw new Error("missing remember-when.auth-token handler in HTML");
+  if (!html.includes("oauth-capture.js")) {
+    throw new Error("missing oauth-capture.js script tag in HTML");
   }
-  if (!html.includes('params.get("code")')) {
-    throw new Error("missing authorization-code OAuth handler in HTML");
+  const scriptRes = await fetch(`${BASE}/oauth-capture.js`);
+  const script = await scriptRes.text();
+  if (!script.includes("remember-when.auth-token")) {
+    throw new Error("missing remember-when.auth-token handler in oauth-capture.js");
+  }
+  if (!script.includes('params.get("code")')) {
+    throw new Error("missing authorization-code OAuth handler in oauth-capture.js");
   }
   if (!html.includes('type="module"')) throw new Error("missing Vite module script");
   return "OAuth pre-bootstrap script present";

@@ -93,6 +93,42 @@ export async function deleteGcsObject(objectName: string) {
   }
 }
 
+export async function downloadGcsObject(objectName: string) {
+  const storage = getStorageClient();
+  const file = storage.bucket(getBucketName()).file(objectName);
+  const [contents] = await withTimeout(file.download(), GCS_OPERATION_TIMEOUT_MS, "Cloud storage download");
+  return contents;
+}
+
+export async function getSignedReadUrl(objectName: string, expiresMs = 1000 * 60 * 60 * 24 * 7) {
+  const storage = getStorageClient();
+  const file = storage.bucket(getBucketName()).file(objectName);
+  const [signedUrl] = await file.getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + expiresMs
+  });
+  return signedUrl;
+}
+
+export async function uploadBufferToGcs(input: {
+  objectName: string;
+  buffer: Buffer;
+  contentType: string;
+}) {
+  const storage = getStorageClient();
+  const file = storage.bucket(getBucketName()).file(input.objectName);
+  await withTimeout(
+    file.save(input.buffer, {
+      resumable: false,
+      contentType: input.contentType
+    }),
+    GCS_OPERATION_TIMEOUT_MS,
+    "Cloud storage upload"
+  );
+  return input.objectName;
+}
+
 function seriesBasePath(threadId: string, node: MemoryNode) {
   return `threads/${threadId}/series/${seriesPrefix(node)}`;
 }
