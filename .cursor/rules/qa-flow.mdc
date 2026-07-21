@@ -1,0 +1,20 @@
+---
+description: When the user says "run the qa flow" (or similar), execute the Remember When QA skill immediately.
+alwaysApply: true
+---
+
+# QA flow trigger
+
+If the user says any of:
+
+- "run the qa flow"
+- "run QA" / "run qa"
+- "qa flow"
+- "run the QA suite"
+- "smoke test production" / "verify production with QA"
+
+Then:
+
+1. Read and follow `.cursor/skills/qa-flow/SKILL.md` immediately.
+2. Run `npm run qa` from the repo root (unless they specified flags like `--local`).
+3. Summarize pass/fail. Do not deploy to production. Do not ask whether to run — just run it.

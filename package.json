@@ -17,7 +17,9 @@
     "test:e2e:local": "playwright test --project=local",
     "test:e2e:headed": "playwright test --headed",
     "verify:production": "node scripts/verify-production.mjs",
-    "preview:netlify": "npx netlify dev"
+    "preview:netlify": "npx netlify dev",
+    "qa": "node scripts/qa-flow.mjs",
+    "qa:local": "node scripts/qa-flow.mjs --local"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
