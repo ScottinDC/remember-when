@@ -12,6 +12,26 @@ npm run dev
 
 Open http://127.0.0.1:5173.
 
+## QA flow
+
+In Cursor, say **“run the qa flow”** — the agent will execute the full suite.
+
+Or run it yourself:
+
+```bash
+npm run qa
+```
+
+What it runs:
+
+1. `npm run build`
+2. Production smoke (`scripts/verify-production.mjs`)
+3. Digest route smoke (`/api/digest/send`)
+4. Playwright production e2e
+5. Optional: `npm run qa -- --local` for local Playwright (start `npm run dev:local` first)
+
+Results are written to `e2e-results/qa-flow.json`. This does **not** deploy to production.
+
 ## Required Environment
 
 ```bash

@@ -36,9 +36,17 @@ async function resolveAllowlistedEmail() {
     return process.env.E2E_TEST_EMAIL.trim();
   }
 
+  const fromEnv = (process.env.ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim())
+    .filter(Boolean);
+  if (fromEnv.length > 0) {
+    return fromEnv[0];
+  }
+
   const configPath = join(homedir(), "Library/Preferences/netlify/config.json");
   if (!existsSync(configPath)) {
-    throw new Error("Set E2E_TEST_EMAIL or run `netlify login` so allowlist email can be resolved.");
+    throw new Error("Set E2E_TEST_EMAIL or ALLOWED_EMAILS, or run `netlify login` so allowlist email can be resolved.");
   }
 
   const config = JSON.parse(readFileSync(configPath, "utf8"));
