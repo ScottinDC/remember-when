@@ -67,6 +67,7 @@ export type SankeyNode = {
   name: string;
   status: MemoryNode["status"];
   sequenceOrder: number;
+  depth: number;
   question: string;
 };
 export type SankeyLink = {
@@ -85,6 +86,7 @@ export function buildSankeyData(nodes: MemoryNode[]) {
     name: questionCode(node),
     status: node.status,
     sequenceOrder: node.sequenceOrder,
+    depth: node.depth,
     question: node.question
   }));
 

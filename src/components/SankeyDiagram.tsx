@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { sankey, sankeyLinkHorizontal } from "d3-sankey";
 import { select } from "d3";
-import { branchColor } from "../lib/colors";
+import { depthColor } from "../lib/colors";
 import { buildSankeyData } from "../lib/interview";
 import type { MemoryNode } from "../types";
 
@@ -14,6 +14,7 @@ type LayoutNode = {
   name: string;
   status: MemoryNode["status"];
   sequenceOrder?: number;
+  depth?: number;
   x0?: number;
   x1?: number;
   y0?: number;
@@ -43,8 +44,7 @@ function nodeColor(node: LayoutNode) {
   if (node.id === "__start__") {
     return "transparent";
   }
-  const order = node.sequenceOrder ?? 1;
-  const base = branchColor(order);
+  const base = depthColor(node.depth ?? 0);
   if (node.status === "pending") {
     return base + "66";
   }
@@ -52,6 +52,10 @@ function nodeColor(node: LayoutNode) {
     return base + "aa";
   }
   return base;
+}
+
+function linkColor(link: LayoutLink) {
+  return depthColor(link.target.depth ?? 0);
 }
 
 function linkMidpoint(link: LayoutLink) {
@@ -70,7 +74,7 @@ function drawSankey(svgElement: SVGSVGElement, nodes: MemoryNode[], containerWid
   const { nodes: graphNodes, links } = buildSankeyData(nodes);
 
   const layoutNodes: LayoutNode[] = [
-    { id: "__start__", name: "Start", status: "answered" },
+    { id: "__start__", name: "Start", status: "answered", depth: 0 },
     ...graphNodes.map((node) => ({ ...node }))
   ];
 
@@ -118,8 +122,8 @@ function drawSankey(svgElement: SVGSVGElement, nodes: MemoryNode[], containerWid
     .data(graph.links)
     .join("path")
     .attr("d", sankeyLinkHorizontal())
-    .attr("stroke", (link) => branchColor(link.target.sequenceOrder ?? 1))
-    .attr("stroke-opacity", 0.82)
+    .attr("stroke", (link) => linkColor(link))
+    .attr("stroke-opacity", 0.78)
     .attr("stroke-width", (link) => Math.max(2, link.width ?? 2));
 
   svg
@@ -147,7 +151,7 @@ function drawSankey(svgElement: SVGSVGElement, nodes: MemoryNode[], containerWid
     })
     .each(function (link) {
       const group = select(this);
-      const color = branchColor(link.target.sequenceOrder ?? 1);
+      const color = linkColor(link);
 
       group
         .append("rect")
@@ -196,15 +200,35 @@ export function SankeyDiagram({ nodes }: SankeyDiagramProps) {
     return null;
   }
 
+  const maxDepth = Math.max(...nodes.map((node) => node.depth), 0);
+  const legendDepths = Array.from({ length: Math.min(maxDepth + 1, 8) }, (_, i) => i);
+
   return (
     <section className="form-card card-body">
       <div className="mb-0.5 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="panel-title">Question Progression</h2>
         <span className="panel-subtitle">Branching flow</span>
       </div>
-      <p className="mb-4 text-sm leading-relaxed text-ink-muted">
-        Each branch is labeled with the question it leads to. The conversation deepens as one response flows into the next.
+      <p className="mb-3 text-sm leading-relaxed text-ink-muted">
+        Each branch is labeled with the question it leads to. Colors mark depth — foundation
+        questions start in navy and move through the spectrum as follow-ups deepen.
       </p>
+      {legendDepths.length > 1 ? (
+        <ul className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5" aria-label="Depth color legend">
+          {legendDepths.map((depth) => (
+            <li key={depth} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm"
+                style={{ backgroundColor: depthColor(depth) }}
+                aria-hidden="true"
+              />
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+                {depth === 0 ? "Foundation" : `Level ${depth}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div
         ref={containerRef}
         className="min-h-[400px] w-full overflow-x-auto rounded border border-line-soft/80 bg-fill p-2.5"
