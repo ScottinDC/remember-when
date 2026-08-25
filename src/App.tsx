@@ -1,6 +1,6 @@
 import React from "react";
 import { Loader2 } from "lucide-react";
-import { ApiAuthError, fetchInterview } from "./api";
+import { fetchInterview } from "./api";
 import { useAuth } from "./auth/AuthProvider";
 import { AuthStatus } from "./auth/LoginScreen";
 import { AppHeader } from "./components/AppHeader";
@@ -18,11 +18,7 @@ export function App() {
   React.useEffect(() => {
     fetchInterview()
       .then(setState)
-      .catch(async (err: unknown) => {
-        if (err instanceof ApiAuthError) {
-          await logout({ error: err.message });
-          return;
-        }
+      .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Could not load the interview.");
       })
       .finally(() => setLoading(false));
@@ -52,11 +48,7 @@ export function App() {
                 setError(null);
                 fetchInterview()
                   .then(setState)
-                  .catch(async (err: unknown) => {
-                    if (err instanceof ApiAuthError) {
-                      await logout({ error: err.message });
-                      return;
-                    }
+                  .catch((err: unknown) => {
                     setError(err instanceof Error ? err.message : "Could not load the interview.");
                   })
                   .finally(() => setLoading(false));

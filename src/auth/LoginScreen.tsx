@@ -4,11 +4,8 @@ import { useAuth } from "./AuthProvider";
 
 export function LoginScreen() {
   const {
-    authConfigured,
-    configStatus,
     error,
     getAccessToken,
-    hasAllowedEmailsKey,
     loginWithGoogle,
     logout,
     retryBootstrap,
@@ -38,39 +35,14 @@ export function LoginScreen() {
                 Try again
               </button>
             </div>
-          ) : configStatus === "failed" ? (
-            <div className="space-y-3 rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-sm text-[#9b2c2c]">
-              <p>
-                {import.meta.env.DEV
-                  ? "Could not reach the local API on port 8787. Run npm run dev:local from the project folder."
-                  : "Could not reach the server to verify access control. Check your connection and try again."}
-              </p>
-              <button className="btn-secondary w-full justify-center" onClick={() => void retryBootstrap()} type="button">
-                Try again
-              </button>
-            </div>
-          ) : !authConfigured ? (
-            <div className="rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-sm text-[#9b2c2c]">
-              {hasAllowedEmailsKey
-                ? "ALLOWED_EMAILS is set but no valid addresses were found. Check comma-separated formatting in Netlify, then redeploy."
-                : "Access control is not configured yet. Add ALLOWED_EMAILS in Netlify environment variables with Functions scope, then redeploy."}
-            </div>
           ) : null}
 
           <button
             className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={configStatus !== "loaded" || !authConfigured}
-            onClick={loginWithGoogle}
+            onClick={() => void loginWithGoogle()}
             type="button"
           >
-            {configStatus === "loading" ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Checking access…
-              </>
-            ) : (
-              "Continue with Google"
-            )}
+            Continue with Google
           </button>
 
           {hasSession ? (
@@ -90,8 +62,7 @@ export function LoginScreen() {
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { authRequired, loading, user } = useAuth();
-  const mustSignIn = import.meta.env.PROD || authRequired;
+  const { loading, user } = useAuth();
   const finishingOAuth = hasPendingOAuthReturn();
 
   if (loading) {
@@ -105,7 +76,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (mustSignIn && !user) {
+  if (!user) {
     return <LoginScreen />;
   }
 
@@ -113,9 +84,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export function AuthStatus() {
-  const { authRequired, logout, user } = useAuth();
+  const { logout, user } = useAuth();
 
-  if (!authRequired || !user || user.email === "local-dev@remember-when.local") {
+  if (!user) {
     return null;
   }
 
