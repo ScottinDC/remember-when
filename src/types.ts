@@ -10,6 +10,9 @@ export type MemoryNode = {
   metadata: Record<string, unknown> | null;
   status: "pending" | "processing" | "answered" | "failed";
   sequenceOrder: number;
+  treeOrder: number;
+  branchRootOrder: number;
+  questionCode: string;
   depth: number;
   generation: number;
   branchRootId: string;

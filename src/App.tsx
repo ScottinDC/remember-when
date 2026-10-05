@@ -19,7 +19,9 @@ export function App() {
     fetchInterview()
       .then(setState)
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not load the interview.");
+        setError(
+          err instanceof Error ? err.message : "Could not load the interview.",
+        );
       })
       .finally(() => setLoading(false));
   }, [logout]);
@@ -39,7 +41,9 @@ export function App() {
     return (
       <main className="grid min-h-screen place-items-center px-4">
         <div className="flex max-w-md flex-col items-center gap-4 text-center">
-          <p className="text-base text-[#9b2c2c]">{error ?? "Could not load the interview."}</p>
+          <p className="text-base text-[#9b2c2c]">
+            {error ?? "Could not load the interview."}
+          </p>
           <div className="flex w-full flex-col gap-3">
             <button
               className="btn-primary"
@@ -49,7 +53,11 @@ export function App() {
                 fetchInterview()
                   .then(setState)
                   .catch((err: unknown) => {
-                    setError(err instanceof Error ? err.message : "Could not load the interview.");
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : "Could not load the interview.",
+                    );
                   })
                   .finally(() => setLoading(false));
               }}
@@ -57,7 +65,11 @@ export function App() {
             >
               Try again
             </button>
-            <button className="btn-secondary" onClick={() => void logout({ error: null })} type="button">
+            <button
+              className="btn-secondary"
+              onClick={() => void logout({ error: null })}
+              type="button"
+            >
               Sign out and try again
             </button>
           </div>
@@ -70,7 +82,7 @@ export function App() {
 
   return (
     <main className="min-h-screen px-5 py-8 md:px-6">
-      <div className="mx-auto flex w-full max-w-shell flex-col gap-7">
+      <div className="mx-auto flex w-full max-w-shell flex-col gap-5">
         <AuthStatus />
         <AppHeader
           answeredCount={countByStatus(nodes, "answered")}
@@ -80,10 +92,16 @@ export function App() {
         />
 
         {error ? (
-          <div className="rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-base text-[#9b2c2c]">{error}</div>
+          <div className="rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-base text-[#9b2c2c]">
+            {error}
+          </div>
         ) : null}
 
-        <InterviewForm onStateChange={setState} setError={setError} state={state} />
+        <InterviewForm
+          onStateChange={setState}
+          setError={setError}
+          state={state}
+        />
       </div>
     </main>
   );

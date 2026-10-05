@@ -30,6 +30,20 @@ export function useRecorder() {
     };
   }, [audioUrl]);
 
+  useEffect(
+    () => () => {
+      const recorder = recorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+        if (recorder.state === "recording") recorder.stop();
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    },
+    [],
+  );
+
   async function start() {
     setError(null);
     setAudioBlob(null);
@@ -44,7 +58,10 @@ export function useRecorder() {
       setStream(stream);
       chunksRef.current = [];
       const mimeType = pickMimeType();
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -57,7 +74,9 @@ export function useRecorder() {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         setStream(null);
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         setIsRecording(false);
@@ -80,6 +99,9 @@ export function useRecorder() {
         });
       }, 1000);
     } catch {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setStream(null);
       setError("Microphone access is needed to record an answer.");
     }
   }
@@ -110,6 +132,6 @@ export function useRecorder() {
     stream,
     reset,
     start,
-    stop
+    stop,
   };
 }

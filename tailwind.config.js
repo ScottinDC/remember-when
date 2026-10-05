@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
     extend: {
       colors: {
@@ -8,28 +8,28 @@ export default {
         surface: "#ffffff",
         fill: "#fafaf8",
         navy: {
-          DEFAULT: "#1f3a52",
-          light: "#2c5f8f"
+          DEFAULT: "#111111",
+          light: "#2454b8"
         },
         ink: {
-          DEFAULT: "#14120f",
-          body: "#1a1714",
-          secondary: "#3a3631",
-          muted: "#6b6660",
-          faint: "#9b958c",
-          placeholder: "#8a857c"
+          DEFAULT: "#111111",
+          body: "#111111",
+          secondary: "#545454",
+          muted: "#545454",
+          faint: "#666666",
+          placeholder: "#757575"
         },
         line: {
-          DEFAULT: "#e4e1da",
-          soft: "#ecece6",
-          hair: "#d9d6cf"
+          DEFAULT: "#d6d6d6",
+          soft: "#e5e5e5",
+          hair: "#c6c6c6"
         },
         num: "#c4bfb6",
         record: "#d24a3d"
       },
       fontFamily: {
-        sans: ["Open Sans", "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ["Newsreader", "Georgia", "serif"],
+        sans: ["Inter", "Arial", "Helvetica", "sans-serif"],
+        serif: ["Georgia", "Times New Roman", "serif"],
         mono: ["IBM Plex Mono", "ui-monospace", "monospace"]
       },
       boxShadow: {

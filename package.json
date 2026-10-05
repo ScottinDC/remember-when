@@ -7,13 +7,15 @@
     "dev": "npm run client",
     "client": "vite --host",
     "build": "tsc && vite build",
-    "build:netlify": "vite build",
+    "build:netlify": "npm run build",
     "preview": "vite preview --host 127.0.0.1",
     "test:e2e": "playwright test",
     "test:e2e:prod": "playwright test --project=production",
     "test:e2e:local": "playwright test --project=local",
     "test:e2e:headed": "playwright test --headed",
-    "preview:netlify": "npx netlify dev"
+    "preview:netlify": "npx netlify dev",
+    "test:unit": "node --import tsx --test tests/*.test.ts",
+    "check": "npm run test:unit && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
@@ -38,6 +40,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

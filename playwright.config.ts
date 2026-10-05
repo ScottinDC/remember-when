@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const productionBaseURL = process.env.E2E_PRODUCTION_URL ?? "https://stories-remember-when.netlify.app";
+const productionBaseURL = process.env.E2E_PRODUCTION_URL ?? "https://chic-sherbet-39bee5.netlify.app";
 const localBaseURL = process.env.E2E_LOCAL_URL ?? "http://127.0.0.1:5173";
 
 export default defineConfig({

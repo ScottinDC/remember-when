@@ -11,12 +11,17 @@ const corsHeaders = {
 };
 
 type ProcessRequest = {
+  action?: unknown;
   responseId?: unknown;
   objectPath?: unknown;
   contentType?: unknown;
 };
 
 type ResponseRow = {
+  timestamp: string;
+  status: string;
+  transcript: string | null;
+  storage_object_name: string | null;
   id: string;
   thread_id: string;
   question: string;
@@ -121,7 +126,8 @@ export default {
     const objectPath = text(payload?.objectPath, 500);
     const contentType = text(payload?.contentType, 100);
     const allowedTypes = new Set(["audio/webm", "audio/mpeg", "audio/mp4", "audio/ogg"]);
-    if (!responseId || !objectPath || !allowedTypes.has(contentType)) {
+    const regenerate = payload?.action === "regenerate";
+    if (!responseId || (!regenerate && (!objectPath || !allowedTypes.has(contentType)))) {
       return json({ error: "Invalid audio processing request." }, 400);
     }
 
@@ -138,11 +144,24 @@ export default {
 
     const { data: answer, error: answerError } = await admin
       .from("responses")
-      .select("id, thread_id, question, parent_question_id, metadata, threads!inner(owner_id)")
+      .select("id, thread_id, question, parent_question_id, metadata, status, transcript, storage_object_name, timestamp, threads!inner(owner_id)")
       .eq("id", responseId)
       .maybeSingle<ResponseRow>();
     if (answerError || !answer || answer.threads?.owner_id !== userId) {
       return json({ error: "Interview response not found." }, 404);
+    }
+    if (regenerate) {
+      if (answer.status !== "pending" || !answer.parent_question_id) return json({ error: "Only unanswered follow-ups can be replaced." }, 409);
+      const { data: parent } = await admin.from("responses").select("question, transcript").eq("id", answer.parent_question_id).eq("thread_id", answer.thread_id).maybeSingle();
+      if (!parent?.transcript) return json({ error: "Parent answer is unavailable." }, 409);
+      try {
+        const question = await generateFollowUp(parent.question, `${parent.transcript}\n\nAsk a different question from this rejected follow-up: ${answer.question}`, [], openAiKey);
+        const { data: replaced, error } = await admin.from("responses").update({ question }).eq("id", answer.id).eq("status", "pending").eq("question", answer.question).select("id").maybeSingle();
+        if (error || !replaced) return json({ error: "Question changed. Refresh before retrying." }, 409);
+        return json({ status: "complete" });
+      } catch {
+        return json({ error: "Could not generate an alternative. Your question is unchanged." }, 502);
+      }
     }
     const responseDirectory = `${userId}/${answer.thread_id}/${answer.id}/`;
     const isExpectedAudioPath = objectPath.startsWith(`${responseDirectory}source.`) || objectPath.startsWith(`${responseDirectory}source-`);
@@ -155,16 +174,19 @@ export default {
 
     const { data: lockedAnswer, error: lockError } = await admin
       .from("responses")
-      .update({ status: "processing", storage_object_name: objectPath, timestamp: new Date().toISOString() })
+      .update({ status: "processing", timestamp: new Date().toISOString() })
       .eq("id", answer.id)
-      .in("status", ["pending", "failed"])
+      .eq("status", answer.status)
+      .eq("timestamp", answer.timestamp)
+      .in("status", ["pending", "failed", "answered"])
       .select("id")
       .maybeSingle();
     if (lockError) return json({ error: "Could not start audio processing." }, 500);
     if (!lockedAnswer) {
       const { data: current } = await admin.from("responses").select("status").eq("id", answer.id).maybeSingle();
-      return json({ status: current?.status === "answered" ? "complete" : "processing" });
+      return json({ error: "This answer is already being processed. Refresh before retrying.", status: current?.status }, 409);
     }
+    let committed = false;
     try {
       const transcript = await transcribe(audio, contentType, openAiKey);
       const { data: history } = await admin
@@ -172,7 +194,8 @@ export default {
         .select("question, transcript, status, metadata")
         .eq("thread_id", answer.thread_id)
         .order("timestamp", { ascending: true });
-      const followUp = await generateFollowUp(answer.question, transcript, history ?? [], openAiKey);
+      const { data: children } = await admin.from("responses").select("id").eq("parent_question_id", answer.id).limit(1);
+      const followUp = children?.length ? null : await generateFollowUp(answer.question, transcript, history ?? [], openAiKey);
       const now = new Date().toISOString();
       const followUpSequenceOrder = Math.max(
         5,
@@ -192,6 +215,8 @@ export default {
         })
         .eq("id", answer.id);
       if (answerUpdateError) throw answerUpdateError;
+      committed = true;
+      if (followUp) {
       const { error: followUpError } = await admin.from("responses").insert({
         id: crypto.randomUUID(), thread_id: answer.thread_id, parent_question_id: answer.id, question: followUp, status: "pending", created_at: now, timestamp: now,
         metadata: {
@@ -201,12 +226,18 @@ export default {
         }
       });
       if (followUpError) throw followUpError;
+      }
+      if (answer.storage_object_name && answer.storage_object_name !== objectPath) {
+        const { error: cleanupError } = await admin.storage.from(AUDIO_BUCKET).remove([answer.storage_object_name]);
+        if (cleanupError) return json({ status: "complete", warning: "New answer saved, but the previous audio could not be deleted. Contact support." });
+      }
       await admin.from("threads").update({ updated_at: now }).eq("id", answer.thread_id);
       return json({ status: "complete" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Audio processing failed.";
       console.error("process-answer failed:", message);
-      await admin.from("responses").update({ status: "failed", timestamp: new Date().toISOString(), metadata: { error: message }, storage_object_name: objectPath }).eq("id", answer.id);
+      if (committed) return json({ status: "complete", warning: "Your answer was saved, but follow-up processing did not finish. Please refresh." });
+      await admin.from("responses").update({ status: answer.status === "answered" ? "answered" : "failed", transcript: answer.transcript, storage_object_name: answer.storage_object_name, metadata: answer.metadata }).eq("id", answer.id);
       return json({ error: "Could not process this recording." }, 500);
     }
   })
