@@ -43,6 +43,7 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
   const [ready, setReady] = useState(false),
     [factor, setFactor] = useState<string | null>(null),
     [qr, setQr] = useState(""),
+    [setupKey, setSetupKey] = useState(""),
     [code, setCode] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -100,6 +101,16 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
     if (ready) void run(load);
   }, [ready, owner, page]);
   async function enroll() {
+    // Only discard unfinished setups created by this app; keep verified factors.
+    const factors = await supabase.auth.mfa.listFactors();
+    if (factors.error) throw factors.error;
+    for (const pending of factors.data.all) {
+      if (pending.factor_type === "totp" && pending.status === "unverified" &&
+          pending.friendly_name?.startsWith("Archive admin ")) {
+        const result = await supabase.auth.mfa.unenroll({ factorId: pending.id });
+        if (result.error) throw result.error;
+      }
+    }
     const { data, error } = await supabase.auth.mfa.enroll({
       factorType: "totp",
       friendlyName: `Archive admin ${new Date().toISOString().slice(0, 10)}`,
@@ -107,6 +118,7 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
     if (error) throw error;
     setFactor(data.id);
     setQr(data.totp.qr_code);
+    setSetupKey(data.totp.secret);
   }
   async function verify() {
     if (!factor) return;
@@ -118,6 +130,7 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
       throw Error("That code was not accepted. Please try a fresh code.");
     setCode("");
     setQr("");
+    setSetupKey("");
     setReady(true);
   }
   async function memberStatus(target: string, status: string) {
@@ -165,7 +178,7 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
   return (
     <section className="form-card card-body">
       <div className="flex flex-wrap justify-between gap-3 items-baseline">
-        <h1 className="font-serif text-3xl">Family archive</h1>
+        <h1 className="font-serif text-3xl">Administration</h1>
         <span className="text-sm text-ink-secondary">Administrator</span>
       </div>
       <p className="my-3 text-ink-secondary">
@@ -195,13 +208,28 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
           ) : (
             <>
               {qr && (
+                <>
+                <p className="my-3">
+                  In Google Authenticator, tap +, then Scan a QR code. After adding
+                  Remember When, enter the six-digit code shown in the app below.
+                </p>
                 <img
                   className="my-4"
                   alt="Scan this code in your authenticator app"
                   width={200}
                   height={200}
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`}
+                  src={qr}
                 />
+                <details className="my-4">
+                  <summary>On the same phone, or unable to scan?</summary>
+                  <p className="my-3">
+                    In Google Authenticator, tap +, then Enter a setup key. Name it
+                    Remember When, enter this key, and choose Time based. Keep
+                    this key private.
+                  </p>
+                  <code className="break-all select-all">{setupKey}</code>
+                </details>
+                </>
               )}
               <form
                 onSubmit={(e) => {
@@ -225,7 +253,7 @@ export function AdminArchive({ client }: { client?: SupabaseClient } = {}) {
                   className="btn-primary !w-auto mt-3"
                   disabled={busy || code.length !== 6}
                 >
-                  Verify and open archive
+                  Verify and open administration
                 </button>
               </form>
             </>

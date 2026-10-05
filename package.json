@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "build:netlify": "npm run build",
     "preview": "vite preview --host 127.0.0.1",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=local --project=mobile --project=webkit",
     "test:e2e:prod": "playwright test --project=production",
     "test:e2e:local": "playwright test --project=local",
     "test:e2e:headed": "playwright test --headed",
@@ -33,6 +33,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.52.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/d3": "^7.4.3",
     "@types/d3-sankey": "^0.12.5",
     "@types/luxon": "^3.7.2",
@@ -40,11 +41,10 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
-    "autoprefixer": "^10.4.20",
     "fake-indexeddb": "^6.2.5",
     "jszip": "^3.10.2",
     "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

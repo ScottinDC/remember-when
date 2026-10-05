@@ -1,4 +1,5 @@
 type Draft = { key: string; blob: Blob; seconds: number; savedAt: number };
+type StoredDraft = Draft | { key: string; bytes: ArrayBuffer; contentType: string; seconds: number; savedAt: number };
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("remember-when-drafts", 1);
@@ -34,12 +35,20 @@ async function transact<T>(
     };
   });
 }
-export const readDraft = (key: string) =>
-  access<Draft | undefined>("readonly", (store) => store.get(key));
+export const readDraft = async (key: string): Promise<Draft | undefined> => {
+  const stored = await access<StoredDraft | undefined>("readonly", (store) => store.get(key));
+  if (!stored) return undefined;
+  if ("blob" in stored) return stored;
+  return { key: stored.key, blob: new Blob([stored.bytes], { type: stored.contentType }), seconds: stored.seconds, savedAt: stored.savedAt };
+};
 export const saveDraft = (key: string, blob: Blob, seconds: number) =>
-  access("readwrite", (store) =>
-    store.put({ key, blob, seconds, savedAt: Date.now() }),
-  );
+  enqueue(async () => {
+    // WebKit can reject Blob persistence; byte buffers also retain the MIME type.
+    const bytes = await blob.arrayBuffer();
+    return transact("readwrite", (store) =>
+      store.put({ key, bytes, contentType: blob.type, seconds, savedAt: Date.now() }),
+    );
+  });
 export const deleteDraft = (key: string) =>
   access("readwrite", (store) => store.delete(key));
 
@@ -49,7 +58,10 @@ function access<T>(
   mode: IDBTransactionMode,
   action: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
-  const next = pending.then(() => transact(mode, action));
+  return enqueue(() => transact(mode, action));
+}
+function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+  const next = pending.then(operation);
   pending = next.catch(() => undefined);
   return next;
 }

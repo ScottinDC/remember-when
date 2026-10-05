@@ -1,4 +1,5 @@
 import { requireSupabaseAuthClient } from "./supabase";
+import { consumeOAuthReturn } from "./oauth-return";
 
 export type AuthUser = { email: string; id: string; role?: string };
 export type AuthConfig = {
@@ -10,11 +11,10 @@ export type AuthConfigStatus = "loading" | "loaded" | "failed";
 
 let accessToken: string | null = null;
 let implicitRestore: Promise<void> | null = null;
+let oauthReturn = consumeOAuthReturn(window.location, window.history);
 
 export function hasPendingOAuthReturn() {
-  return new URLSearchParams(window.location.hash.replace(/^#/, "")).has(
-    "access_token",
-  );
+  return Boolean(oauthReturn || implicitRestore);
 }
 
 export function getStoredAccessToken() {
@@ -23,23 +23,20 @@ export function getStoredAccessToken() {
 
 export async function resolveSupabaseSession(): Promise<AuthUser | null> {
   const client = requireSupabaseAuthClient();
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const callbackAccessToken = params.get("access_token");
-  const refreshToken = params.get("refresh_token");
-
-  if (callbackAccessToken && refreshToken) {
-    implicitRestore ??= (async () => {
-      const { error } = await client.auth.setSession({
-        access_token: callbackAccessToken,
-        refresh_token: refreshToken,
-      });
+  if (oauthReturn && !implicitRestore) {
+    const tokens = oauthReturn;
+    oauthReturn = null;
+    implicitRestore = (async () => {
+      const { error } = await client.auth.setSession(tokens);
       if (error)
         throw new Error(
           `Could not restore your Supabase sign-in (${error.code ?? error.name}).`,
         );
-      window.history.replaceState(null, "", window.location.pathname);
     })();
-    await implicitRestore;
+  }
+  // Both StrictMode bootstrap calls wait for the same restore, after URL cleanup.
+  if (implicitRestore) {
+    try { await implicitRestore; } finally { implicitRestore = null; }
   }
 
   const { data, error } = await client.auth.getSession();

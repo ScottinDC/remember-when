@@ -25,7 +25,7 @@ export function App() {
               aria-pressed={admin}
               onClick={() => setAdmin(true)}
             >
-              Family archive
+              Administration
             </button>
             <button
               type="button"

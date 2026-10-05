@@ -126,26 +126,31 @@ export function useRecorder(draftKey?: string | null) {
         }
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         setStream(null);
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
-        if (draftKey)
-          void saveDraft(draftKey, blob, secondsRef.current).catch(() =>
-            setError(
-              "This browser could not protect your draft. Save it before leaving this page.",
-            ),
-          );
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        setIsRecording(false);
         if (timerRef.current) {
           window.clearInterval(timerRef.current);
           timerRef.current = null;
         }
+        if (draftKey) {
+          try {
+            // Keep navigation guarded until the recoverable draft is committed.
+            await saveDraft(draftKey, blob, secondsRef.current);
+          } catch {
+            if (mountedRef.current) setError(
+              "This browser could not protect your draft. Save it before leaving this page.",
+            );
+          }
+        }
+        if (!mountedRef.current) return;
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        setIsRecording(false);
       };
 
       setSeconds(0);
