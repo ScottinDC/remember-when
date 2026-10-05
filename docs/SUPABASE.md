@@ -6,6 +6,14 @@ Dashboard: https://supabase.com/dashboard/project/medtlhjhoqrlzycgujcj
 
 The dashboard shows GitHub integration with `ScottinDC/remember-when`. This does not make the manually deployed Netlify site Git-connected, and does not prove functions deploy automatically.
 
+## Release preparation verified October 5, 2026
+
+An authenticated CLI export preserved the full database, password-free role definitions, deployed function source, live auth configuration, migration history, and all Storage audio bytes in a private local release directory. Audio sizes were checked against Storage metadata and SHA-256 checksums recorded. The application, Auth, and Storage metadata were restored into an isolated PostgreSQL 17 database; all four migrations applied successfully there. Administrator access was denied at AAL1 and admitted at AAL2 in that rehearsal. This is an application restore rehearsal, not a reconstruction of Supabase's managed infrastructure.
+
+The live project has Google sign-in and TOTP enrollment/verification enabled. No jobs were present in `cron.job` at inspection; do not claim a weekly digest schedule is active or create one without choosing its schedule. Other external schedulers have not been ruled out. The Free plan has no scheduled project backups. The private local backup is not an off-device backup.
+
+Production migrations and deployments remain pending a coordinated maintenance window. The local `config.toml` now explicitly records the function gateway settings and enables local TOTP testing. It remains a local development configuration: do not push its entire Auth configuration over the recovered hosted configuration.
+
 ## Ownership and recovery
 
 1. Confirm the organization owner, billing contact and recovery access are under your control.
