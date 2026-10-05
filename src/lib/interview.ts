@@ -15,12 +15,23 @@ export function formatTime(totalSeconds: number) {
 export function chooseNextQuestion(nodes: MemoryNode[]) {
   const sorted = sortBySeries(nodes);
   const foundationPending = sorted.find(
-    (node) => node.depth === 0 && node.status === "pending",
+    (node) =>
+      !node.archivedAt &&
+      !node.metadata?.skippedAt &&
+      node.depth === 0 &&
+      node.status === "pending",
   );
   if (foundationPending) {
     return foundationPending;
   }
-  return sorted.find((node) => node.status === "pending") ?? null;
+  return (
+    sorted.find(
+      (node) =>
+        !node.archivedAt &&
+        !node.metadata?.skippedAt &&
+        node.status === "pending",
+    ) ?? null
+  );
 }
 
 export function sortBySeries(nodes: MemoryNode[]) {
@@ -63,6 +74,7 @@ export function questionCode(node: MemoryNode) {
 }
 
 export function seriesLabel(node: MemoryNode) {
+  if (node.metadata?.skippedAt) return "Passed for now";
   if (node.status === "answered") {
     return "Saved";
   }

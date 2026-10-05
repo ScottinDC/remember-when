@@ -16,13 +16,18 @@ The dashboard shows GitHub integration with `ScottinDC/remember-when`. This does
 
 ## Release order for this update
 
-- Export/reconcile the existing migration history first. The repository does not yet contain a full baseline; do not use it to rebuild the database from scratch.
-- Review and apply only `supabase/migrations/20261005010000_digest_deliveries.sql` to the existing project. It creates a new service-role-only reservation table and does not alter existing interview data.
-- Confirm the SendGrid secrets and verified sender described in `SENDGRID.md`.
-- Deploy the updated `send-weekly-digest` function only after that table exists. Preserve its current gateway/JWT settings; the function additionally requires `x-digest-secret`.
-- Inspect the existing cron job before enabling a replacement. Keep one scheduler. Its configured timing was not verified in this recovery.
-- Deploy the frontend with the public Supabase build variables, then verify Google sign-in, private playback, a real recording and follow-up generation with an authorized test account.
-- Connect the current Netlify project to the canonical repository when ready for Git-based releases. Check build settings and the production branch before merging; another older Netlify project may already follow `main`.
+This is a coordinated production release, not a frontend-only deployment. See the full verification checklist in `ARCHIVE-READINESS.md`.
+
+1. Export/reconcile the existing migration history and verify private database and Storage backups. The repository does not contain a full baseline: do not use it to rebuild/reset the database. Test restoration separately.
+2. Prepare a short maintenance window and pause the digest scheduler. Inspect its current schedule first; retain one scheduler. Prevent old clients from saving during the backend change.
+3. Review and apply all four migrations, in order, transactionally to the existing project: `20261005010000_digest_deliveries.sql`, `20261005020000_archive_readiness.sql`, `20261005030000_story_controls.sql`, then `20261005040000_recording_deletion.sql`. Reconcile already-applied migrations rather than rerunning them. The second adds recording history/jobs/admin RPCs and restrictive policies. Story controls add preferences and owner-scoped question actions; deletion adds an explicit, resumable purge workflow. The migration itself preserves valid existing Supabase audio paths, transcripts and timestamps; no audio files are moved or deleted. Inventory legacy GCS/external paths separately before release.
+4. Deploy all five functions: `claim-access`, `process-answer`, `archive-audio`, `delete-answer`, `send-weekly-digest`. Preserve recovered gateway/JWT configuration; `send-weekly-digest` additionally requires the scheduler secret. The new email function depends on the archive and digest migrations.
+5. After explicit approval of the intended account, assign its administrator database role through the trusted dashboard. No public signup, editable profile metadata or browser variable can grant this role. Other approved accounts remain members. The administrator must enroll and verify their own authenticator before accessing the family archive.
+6. Deploy the new frontend using the existing public Supabase configuration. Verify the smoke checks below before ending maintenance. Do not roll back only the frontend: the old frontend cannot use the new private-playback policy. Prefer a forward fix; retain database changes and audio history during incident handling.
+7. Validate SendGrid credentials/sender, then restore the existing scheduler only when ready. Sending a real test email requires a chosen recipient and approved content. Provider acceptance does not prove delivery.
+8. Connect the intended Netlify project to the canonical repository for future releases. Another older Netlify project follows `main`, so review both sites' production settings before merging this PR.
+
+Production checks: owner Google login; unapproved account denied; real microphone recording; durable playback despite AI failure; successful transcription/follow-up; retry without duplicate question; replacement history; archive/restore; deletion of a disposable test take and its earlier versions; story choice persistence, passing and regeneration; DOCX/text/MP3 downloads; revoked account denied new links; member denied admin; administrator denied at AAL1 and admitted after AAL2. Test on the family member's actual device. Newly signed playback links last five minutes; previously issued legacy links retain their original expiry (including seven-day email links).
 
 Secrets stay in Supabase Edge Function secrets: `OPENAI_API_KEY`, `SENDGRID_API_KEY`, `DIGEST_FROM_EMAIL`, `DIGEST_FROM_NAME`, `DIGEST_SCHEDULE_SECRET`, `DIGEST_TIMEZONE`. A configured secret name does not prove the credential is valid or its account/sender is ready.
 

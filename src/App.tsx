@@ -1,4 +1,5 @@
 import React from "react";
+import { AdminArchive } from "./components/AdminArchive";
 import { Loader2 } from "lucide-react";
 import { fetchInterview } from "./api";
 import { useAuth } from "./auth/AuthProvider";
@@ -10,6 +11,51 @@ import { countByStatus } from "./lib/interview";
 import type { InterviewState } from "./types";
 
 export function App() {
+  const { user } = useAuth();
+  const [admin, setAdmin] = React.useState(user?.role === "admin");
+  const [busy, setBusy] = React.useState(false);
+  return (
+    <>
+      <nav className="app-navigation" aria-label="Archive areas">
+        {user?.role === "admin" && (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={admin}
+              onClick={() => setAdmin(true)}
+            >
+              Family archive
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={!admin}
+              onClick={() => setAdmin(false)}
+            >
+              My interview
+            </button>
+          </>
+        )}
+      </nav>
+      {admin && user?.role === "admin" ? (
+        <main className="mx-auto max-w-shell px-5 pb-10">
+          <AuthStatus />
+          <AdminArchive />
+        </main>
+      ) : (
+        <InterviewApp busy={busy} onBusyChange={setBusy} />
+      )}
+    </>
+  );
+}
+function InterviewApp({
+  onBusyChange,
+  busy,
+}: {
+  onBusyChange: (busy: boolean) => void;
+  busy: boolean;
+}) {
   const { logout } = useAuth();
   const [state, setState] = React.useState<InterviewState | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -83,7 +129,7 @@ export function App() {
   return (
     <main className="min-h-screen px-5 py-8 md:px-6">
       <div className="mx-auto flex w-full max-w-shell flex-col gap-5">
-        <AuthStatus />
+        <AuthStatus disabled={busy} />
         <AppHeader
           answeredCount={countByStatus(nodes, "answered")}
           pendingCount={countByStatus(nodes, "pending")}
@@ -98,6 +144,7 @@ export function App() {
         ) : null}
 
         <InterviewForm
+          onBusyChange={onBusyChange}
           onStateChange={setState}
           setError={setError}
           state={state}

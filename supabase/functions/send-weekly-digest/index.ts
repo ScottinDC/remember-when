@@ -4,8 +4,7 @@ import { DateTime } from "luxon";
 import { sendEmail } from "./sendgrid.ts";
 import { deliverOnce } from "./delivery.ts";
 
-const AUDIO_BUCKET = "interview-audio";
-const AUDIO_LINK_TTL_SECONDS = 60 * 60 * 24 * 7;
+const ARCHIVE_URL = "https://chic-sherbet-39bee5.netlify.app";
 
 type DigestRequest = {
   force?: unknown;
@@ -34,20 +33,6 @@ type Thread = {
   id: string;
   owner_id: string | null;
   owner_email: string;
-};
-
-type SignedUrlStorageClient = {
-  storage: {
-    from(bucketId: string): {
-      createSignedUrl(
-        path: string,
-        expiresIn: number,
-      ): PromiseLike<{
-        data: { signedUrl?: string } | null;
-        error: unknown;
-      }>;
-    };
-  };
 };
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -137,7 +122,7 @@ function buildEmail(
       }
       <a href="${escapeHtml(
         answer.audioUrl,
-      )}" style="font-size:14px;color:#1f1a17;font-weight:600;text-decoration:underline;">Play recording</a>
+      )}" style="font-size:14px;color:#1f1a17;font-weight:600;text-decoration:underline;">Open your signed-in archive</a>
     </td></tr>`;
     })
     .join("\n");
@@ -161,7 +146,7 @@ function buildEmail(
       `${answeredAt(answer.timestamp, zone)}`,
       answer.question,
       answer.transcript?.trim() ?? "",
-      `Play recording: ${answer.audioUrl}`,
+      `Open your signed-in archive: ${answer.audioUrl}`,
       "",
     ]),
   ];
@@ -181,26 +166,6 @@ async function digestIdempotencyKey(
     byte.toString(16).padStart(2, "0"),
   ).join("");
   return `remember-when-${weekKey}-${hash}`;
-}
-
-async function createAudioLinks(
-  admin: SignedUrlStorageClient,
-  answers: DigestAnswer[],
-) {
-  return Promise.all(
-    answers.map(async (answer) => {
-      if (!answer.storage_object_name) {
-        throw new Error("An answered response has no audio object.");
-      }
-      const { data, error } = await admin.storage
-        .from(AUDIO_BUCKET)
-        .createSignedUrl(answer.storage_object_name, AUDIO_LINK_TTL_SECONDS);
-      if (error || !data?.signedUrl) {
-        throw new Error("Could not create a private recording link.");
-      }
-      return { ...answer, audioUrl: data.signedUrl };
-    }),
-  );
 }
 
 Deno.serve(async (request) => {
@@ -269,6 +234,7 @@ Deno.serve(async (request) => {
         )
         .in("thread_id", threadIds)
         .eq("status", "answered")
+        .is("archived_at", null)
         .gte("timestamp", week.start)
         .lt("timestamp", week.end)
         .not("storage_object_name", "is", null)
@@ -310,7 +276,10 @@ Deno.serve(async (request) => {
         });
         continue;
       }
-      const linkedAnswers = await createAudioLinks(admin, weeklyAnswers);
+      const linkedAnswers = weeklyAnswers.map((answer) => ({
+        ...answer,
+        audioUrl: ARCHIVE_URL,
+      }));
       const message = buildEmail(
         recipient.email,
         week,

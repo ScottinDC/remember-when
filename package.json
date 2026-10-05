@@ -18,10 +18,12 @@
     "check": "npm run test:unit && npm run build"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@supabase/supabase-js": "^2.112.4",
     "@vitejs/plugin-react": "^4.3.4",
     "d3": "^7.9.0",
     "d3-sankey": "^0.12.3",
+    "docx": "^9.8.1",
     "lucide-react": "^0.468.0",
     "luxon": "^3.7.2",
     "react": "^19.0.0",
@@ -29,6 +31,7 @@
     "vite": "^6.0.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.52.0",
     "@types/d3": "^7.4.3",
     "@types/d3-sankey": "^0.12.5",
@@ -38,6 +41,8 @@
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
+    "fake-indexeddb": "^6.2.5",
+    "jszip": "^3.10.2",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",

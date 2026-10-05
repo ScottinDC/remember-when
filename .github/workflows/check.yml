@@ -17,3 +17,4 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno check --config supabase/functions/send-weekly-digest/deno.json supabase/functions/send-weekly-digest/index.ts
+      - run: deno check --no-lock --config supabase/functions/process-answer/deno.json supabase/functions/claim-access/index.ts supabase/functions/process-answer/index.ts supabase/functions/delete-answer/index.ts supabase/functions/archive-audio/index.ts

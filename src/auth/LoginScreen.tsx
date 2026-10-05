@@ -9,7 +9,7 @@ export function LoginScreen() {
     loginWithGoogle,
     logout,
     retryBootstrap,
-    user
+    user,
   } = useAuth();
   const hasSession = Boolean(getAccessToken() || user);
 
@@ -25,13 +25,18 @@ export function LoginScreen() {
 
         <div className="card-body space-y-4">
           <p className="text-sm leading-relaxed text-ink-muted">
-            Sign in with Google to continue. Only pre-approved family accounts can access this interview.
+            Sign in with Google to continue. Only pre-approved family accounts
+            can access this interview.
           </p>
 
           {error ? (
             <div className="space-y-3 rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-sm text-[#9b2c2c]">
               <p>{error}</p>
-              <button className="btn-secondary w-full justify-center" onClick={() => void retryBootstrap()} type="button">
+              <button
+                className="btn-secondary w-full justify-center"
+                onClick={() => void retryBootstrap()}
+                type="button"
+              >
                 Try again
               </button>
             </div>
@@ -83,7 +88,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export function AuthStatus() {
+export function AuthStatus({ disabled = false }: { disabled?: boolean }) {
   const { logout, user } = useAuth();
 
   if (!user) {
@@ -92,8 +97,15 @@ export function AuthStatus() {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-3 border-b border-line-soft pb-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">Signed in as {user.email}</p>
-      <button className="btn-secondary min-h-8 px-3 text-xs" onClick={() => void logout()} type="button">
+      <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+        Signed in as {user.email}
+      </p>
+      <button
+        className="btn-secondary min-h-8 px-3 text-xs"
+        disabled={disabled}
+        onClick={() => void logout()}
+        type="button"
+      >
         <LogOut className="h-3.5 w-3.5" />
         Sign out
       </button>

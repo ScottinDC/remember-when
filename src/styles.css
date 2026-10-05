@@ -347,3 +347,155 @@ svg [role="button"]:focus-visible rect {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 24px;
 }
+
+.library-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.library-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 14px;
+}
+.library-controls input[type="search"] {
+  min-width: min(280px, 65vw);
+}
+.library-controls input,
+.library-controls select,
+.admin-mfa input,
+.admin-section input {
+  border: 1px solid #c6c6c6;
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #fff;
+  color: #111;
+  max-width: 100%;
+}
+.recording-entry {
+  border-top: 1px solid #d6d6d6;
+  padding: 1.5rem 0;
+}
+.recording-player button:not(.btn-secondary),
+.recording-entry > div > button:not(.btn-secondary),
+.admin-section button:not(.btn-secondary),
+.library-controls button {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.saved-notice {
+  padding: 12px 16px;
+  border-left: 3px solid #4f8c6a;
+  background: #f2f8f2;
+  color: #254831;
+}
+.question-step {
+  border: 1px solid #ccc;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+}
+.question-step[aria-current="step"] {
+  border: 2px solid #2454b8;
+}
+.app-navigation {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 1.25rem;
+}
+.app-navigation button[aria-pressed="true"] {
+  font-weight: 600;
+  border-bottom: 2px solid #111;
+}
+.admin-section {
+  border-top: 1px solid #d6d6d6;
+  padding: 1.25rem 0;
+}
+.admin-mfa {
+  max-width: 420px;
+  margin: 2rem 0;
+}
+.admin-mfa input {
+  display: block;
+  margin-top: 0.5rem;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #2454b8;
+  outline-offset: 3px;
+}
+
+.story-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+.story-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+.story-options input,
+.story-options select {
+  background: white;
+  border: 1px solid #c4c4be;
+  border-radius: 6px;
+  padding: 0.7rem;
+  min-width: 0;
+  width: 100%;
+  color: #1b2632;
+}
+.story-options label span {
+  font-weight: 400;
+}
+.story-arc {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+.story-arc li {
+  border-left: 3px solid #62899d;
+  padding: 0.3rem 1rem;
+}
+.story-arc li p {
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+  color: #5c656c;
+}
+.export-recordings {
+  list-style: none;
+  padding: 0;
+}
+.export-recordings li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem 0;
+  border-bottom: 1px solid #dfdfda;
+}
+.export-recordings label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex: 1 1 260px;
+}
+.export-recordings input {
+  margin-top: 0.3rem;
+}
+
+.library-controls .library-toggle { flex-direction: row; align-items: center; }

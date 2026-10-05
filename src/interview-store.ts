@@ -1,3 +1,4 @@
+import { normalizeStoryOptions } from "../supabase/functions/_shared/story-options";
 import { requireSupabaseAuthClient } from "./auth/supabase";
 import { normalizeTree } from "./lib/tree";
 import type { InterviewState, MemoryNode } from "./types";
@@ -23,6 +24,7 @@ type ResponseRow = {
   timestamp: string;
   metadata: Record<string, unknown> | null;
   status: MemoryNode["status"];
+  archived_at: string | null;
 };
 
 function foundationSequenceOrder(row: ResponseRow) {
@@ -44,7 +46,17 @@ function hydrateNodes(rows: ResponseRow[]): MemoryNode[] {
       parentQuestionId: row.parent_question_id,
       question: row.question,
       transcript: row.transcript,
-      mp3Url: row.mp3_url,
+      mp3Url: null,
+      hasAudio: Boolean(row.storage_object_name),
+      archivedAt: row.archived_at,
+      contentType:
+        typeof row.metadata?.contentType === "string"
+          ? row.metadata.contentType
+          : undefined,
+      processingJobId:
+        typeof row.metadata?.recordingJobId === "string"
+          ? row.metadata.recordingJobId
+          : undefined,
       gcsObjectName: row.gcs_object_name,
       timestamp: row.timestamp,
       metadata: row.metadata,
@@ -69,23 +81,6 @@ function hydrateNodes(rows: ResponseRow[]): MemoryNode[] {
   return normalizeTree(preliminary);
 }
 
-async function withPrivateAudioUrl(
-  row: ResponseRow,
-  node: MemoryNode,
-): Promise<MemoryNode> {
-  const supabase = requireSupabaseAuthClient();
-  let privateAudioUrl: string | null = null;
-  if (row.storage_object_name) {
-    const { data, error } = await supabase.storage
-      .from("interview-audio")
-      .createSignedUrl(row.storage_object_name, 60 * 60);
-    if (!error) {
-      privateAudioUrl = data.signedUrl;
-    }
-  }
-  return { ...node, mp3Url: privateAudioUrl ?? node.mp3Url };
-}
-
 export async function fetchOrCreateSupabaseInterview(): Promise<InterviewState> {
   const supabase = requireSupabaseAuthClient();
   const { data: sessionData, error: sessionError } =
@@ -95,55 +90,21 @@ export async function fetchOrCreateSupabaseInterview(): Promise<InterviewState> 
     throw new Error("Your Supabase sign-in has expired. Please sign in again.");
   }
 
-  let { data: thread, error: threadError } = await supabase
+  const { data: threadId, error: initializeError } =
+    await supabase.rpc("ensure_interview");
+  if (initializeError || !threadId)
+    throw new Error("Could not open your interview. Please try again.");
+  const { data: thread, error: threadError } = await supabase
     .from("threads")
-    .select("id, title, created_at, updated_at")
-    .eq("owner_id", user.id)
-    .maybeSingle();
-  if (threadError) {
-    throw new Error("Could not load your interview.");
-  }
-
-  if (!thread) {
-    const threadId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const { data: createdThread, error: createThreadError } = await supabase
-      .from("threads")
-      .insert({
-        id: threadId,
-        owner_id: user.id,
-        owner_email: user.email,
-        title: "My Life Story",
-        created_at: now,
-        updated_at: now,
-      })
-      .select("id, title, created_at, updated_at")
-      .single();
-    if (createThreadError) {
-      throw new Error("Could not create your interview.");
-    }
-
-    const { error: createResponsesError } = await supabase
-      .from("responses")
-      .insert(
-        INITIAL_QUESTIONS.map((question, index) => ({
-          id: crypto.randomUUID(),
-          thread_id: threadId,
-          question,
-          metadata: { sequenceOrder: index + 1 },
-          status: "pending" as const,
-        })),
-      );
-    if (createResponsesError) {
-      throw new Error("Could not initialize your interview questions.");
-    }
-    thread = createdThread;
-  }
+    .select("id,title,created_at,updated_at,story_options")
+    .eq("id", threadId)
+    .single();
+  if (threadError || !thread) throw new Error("Could not load your interview.");
 
   const { data: responses, error: responsesError } = await supabase
     .from("responses")
     .select(
-      "id, thread_id, parent_question_id, question, transcript, mp3_url, gcs_object_name, storage_object_name, created_at, timestamp, metadata, status",
+      "id, thread_id, parent_question_id, question, transcript, mp3_url, gcs_object_name, storage_object_name, created_at, timestamp, metadata, status, archived_at",
     )
     .eq("thread_id", thread.id)
     .order("timestamp", { ascending: true });
@@ -155,19 +116,10 @@ export async function fetchOrCreateSupabaseInterview(): Promise<InterviewState> 
     thread: {
       id: thread.id,
       title: thread.title,
+      storyOptions: normalizeStoryOptions(thread.story_options),
       createdAt: thread.created_at,
       updatedAt: thread.updated_at,
     },
-    nodes: await Promise.all(
-      hydrateNodes(responses ?? []).map((node) => {
-        const row = (responses ?? []).find(
-          (candidate) => candidate.id === node.id,
-        );
-        if (!row) {
-          return node;
-        }
-        return withPrivateAudioUrl(row, node);
-      }),
-    ),
+    nodes: hydrateNodes(responses ?? []),
   };
 }

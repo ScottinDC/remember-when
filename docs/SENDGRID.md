@@ -12,11 +12,11 @@ Set the following Supabase function secrets through the dashboard:
 
 The dashboard already listed these names during recovery. Values, sender verification, account delivery permissions and cron execution were not verified. Keep existing credentials until their ownership and validity are confirmed; do not paste secrets in GitHub or chat.
 
-Each request has one recipient, plain text and HTML content, a digest correlation key, and disabled click/open tracking. Private audio links expire after seven days. A `202` response means queued/accepted, not delivered. The optional `X-Message-Id` is recorded; no JSON success body is expected.
+Each request has one recipient, plain text and HTML content, a digest correlation key, and disabled click/open tracking. Playback links open the signed-in archive; new emails contain no signed audio URLs. Archived recordings are excluded. Emails still contain question and transcript excerpts, so treat the recipient inbox as private. Previously issued legacy signed links retain their original expiry. A `202` response means queued/accepted, not delivered. The optional `X-Message-Id` is recorded; no JSON success body is expected.
 
 ## Duplicate prevention and failures
 
-Apply `20261005010000_digest_deliveries.sql` before deploying. The unique digest key reserves one attempt atomically before sending. Concurrent calls, repeated cron runs and `force` cannot send the identical digest twice. Existing successful `digest_state` checks remain in place across the provider migration.
+Apply both `20261005010000_digest_deliveries.sql` and `20261005020000_archive_readiness.sql` before deploying. The unique digest key reserves one attempt atomically before sending. Concurrent calls, repeated cron runs and `force` cannot send the identical digest twice. Existing successful `digest_state` checks remain in place across the provider migration.
 
 A failed or interrupted attempt keeps its reservation. There is deliberately no automatic retry or expiry, because a network failure can occur after SendGrid accepts the message. Inspect the reservation and SendGrid Email Activity using its correlation/message ID before deciding whether an operator should release a reservation and retry. An accepted request followed by a database-write failure also remains blocked from automatic resend. This prioritizes avoiding duplicates and may require manual recovery of an unsent digest.
 

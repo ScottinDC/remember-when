@@ -34,6 +34,10 @@ export async function saveSupabaseAnswer(
   audio: Blob,
   onStage?: (stage: SaveStage) => void,
 ): Promise<{ state: InterviewState; warning?: string }> {
+  if (audio.size > 25_000_000)
+    throw new Error(
+      "This recording is too large. Please make a shorter recording.",
+    );
   onStage?.("saving");
   const supabase = requireSupabaseAuthClient();
   const { data: sessionData, error: sessionError } =
@@ -65,25 +69,76 @@ export async function saveSupabaseAnswer(
     throw new Error(`Could not upload the recording: ${uploadError.message}`);
   }
 
-  onStage?.("processing");
-  const { data: processData, error: processError } =
-    await supabase.functions.invoke("process-answer", {
-      body: { responseId: responseRecord.id, objectPath, contentType },
-    });
-  if (processError) {
+  const { error: registerError } = await supabase.rpc("register_recording", {
+    p_response_id: questionId,
+    p_object_path: objectPath,
+    p_content_type: contentType,
+    p_bytes: audio.size,
+  });
+  if (registerError)
     throw new Error(
-      "The recording was saved, but processing could not finish. Please refresh before trying again.",
+      "Your draft is still on this device. Could not confirm the recording was saved; please try again.",
+    );
+  onStage?.("processing");
+  const { data, error } = await supabase.functions.invoke("process-answer", {
+    body: { responseId: questionId },
+  });
+  onStage?.("refreshing");
+  let state: InterviewState;
+  try {
+    state = await fetchOrCreateSupabaseInterview();
+  } catch {
+    throw new Error(
+      "Your recording was saved, but the library could not refresh. Reload this page to check it before saving another copy.",
     );
   }
-
-  onStage?.("refreshing");
   return {
-    state: await fetchOrCreateSupabaseInterview(),
+    state,
     warning:
-      typeof processData?.warning === "string"
-        ? processData.warning
+      error || data?.processing === "failed"
+        ? "Recording saved. You can retry the transcript and next question from My recordings."
         : undefined,
   };
+}
+
+export async function processRecording(questionId: string) {
+  const supabase = requireSupabaseAuthClient();
+  const { data, error } = await supabase.functions.invoke("process-answer", {
+    body: { responseId: questionId },
+  });
+  if (error || data?.processing === "failed")
+    throw new Error(
+      "Your recording is safe. Processing could not finish; try again later.",
+    );
+}
+
+export async function retryProcessing(questionId: string) {
+  await processRecording(questionId);
+  return { state: await fetchOrCreateSupabaseInterview() };
+}
+
+export async function setArchived(questionId: string, archived: boolean) {
+  const { error } = await requireSupabaseAuthClient().rpc(
+    "set_recording_archived",
+    { p_response_id: questionId, p_archived: archived },
+  );
+  if (error) throw new Error("Could not update the recording.");
+  return { state: await fetchOrCreateSupabaseInterview() };
+}
+
+export async function recordingLink(
+  responseId: string,
+  jobId?: string,
+): Promise<{ url: string; contentType: string | null; expiresAt: number }> {
+  const { data, error } = await requireSupabaseAuthClient().functions.invoke(
+    "archive-audio",
+    { body: { responseId, jobId } },
+  );
+  if (error || !data?.url)
+    throw new Error(
+      "Could not open this recording. Please sign in again if your session expired.",
+    );
+  return data;
 }
 
 export async function deleteSupabaseAnswer(
@@ -91,10 +146,12 @@ export async function deleteSupabaseAnswer(
 ): Promise<{ state: InterviewState }> {
   const supabase = requireSupabaseAuthClient();
   const { error } = await supabase.functions.invoke("delete-answer", {
-    body: { responseId: questionId },
+    body: { responseId: questionId, permanent: true },
   });
   if (error) {
-    throw new Error("Could not clear this recording. Please try again.");
+    throw new Error(
+      "Deletion could not finish. Please retry Delete permanently.",
+    );
   }
   return { state: await fetchOrCreateSupabaseInterview() };
 }
@@ -108,5 +165,25 @@ export async function regenerateSupabaseQuestion(questionId: string) {
     throw new Error(
       "Could not generate another question. Your current question is unchanged.",
     );
+  return { state: await fetchOrCreateSupabaseInterview() };
+}
+
+export async function passQuestion(questionId: string, passed: boolean) {
+  const { error } = await requireSupabaseAuthClient().rpc(
+    "set_question_passed",
+    { p_response_id: questionId, p_passed: passed },
+  );
+  if (error) throw new Error("Could not update this question.");
+  return { state: await fetchOrCreateSupabaseInterview() };
+}
+export async function saveStoryOptions(
+  threadId: string,
+  options: import("../supabase/functions/_shared/story-options").StoryOptions,
+) {
+  const { error } = await requireSupabaseAuthClient().rpc(
+    "save_story_options",
+    { p_thread_id: threadId, p_options: options },
+  );
+  if (error) throw new Error("Could not save story options.");
   return { state: await fetchOrCreateSupabaseInterview() };
 }

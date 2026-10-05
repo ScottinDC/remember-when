@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { readDraft, saveDraft, deleteDraft } from "./lib/drafts";
 
 const MAX_SECONDS = 5 * 60;
 
@@ -7,7 +8,10 @@ function pickMimeType() {
   return preferred.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
-export function useRecorder() {
+export function useRecorder(draftKey?: string | null) {
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -30,8 +34,10 @@ export function useRecorder() {
     };
   }, [audioUrl]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       const recorder = recorderRef.current;
       if (recorder) {
         recorder.onstop = null;
@@ -40,11 +46,57 @@ export function useRecorder() {
       }
       streamRef.current?.getTracks().forEach((track) => track.stop());
       if (timerRef.current) window.clearInterval(timerRef.current);
-    },
-    [],
-  );
+    };
+  }, []);
+
+  const [draftLoading, setDraftLoading] = useState(Boolean(draftKey));
+  const secondsRef = useRef(0);
+  useEffect(() => {
+    secondsRef.current = seconds;
+  }, [seconds]);
+  useEffect(() => {
+    if (!draftKey) {
+      setDraftLoading(false);
+      return;
+    }
+    setDraftLoading(true);
+    let cancelled = false;
+    readDraft(draftKey)
+      .then((draft) => {
+        if (!cancelled && draft) {
+          setAudioBlob(draft.blob);
+          setAudioUrl(URL.createObjectURL(draft.blob));
+          setSeconds(draft.seconds);
+        }
+      })
+      .catch(() =>
+        setError(
+          "Device draft recovery is unavailable. Keep this page open until you save.",
+        ),
+      )
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftKey]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (isRecording) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isRecording]);
 
   async function start() {
+    if (startingRef.current || recorderRef.current?.state === "recording")
+      return;
+    startingRef.current = true;
+    setStarting(true);
     setError(null);
     setAudioBlob(null);
     if (audioUrl) {
@@ -54,6 +106,10 @@ export function useRecorder() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       setStream(stream);
       chunksRef.current = [];
@@ -77,6 +133,12 @@ export function useRecorder() {
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
+        if (draftKey)
+          void saveDraft(draftKey, blob, secondsRef.current).catch(() =>
+            setError(
+              "This browser could not protect your draft. Save it before leaving this page.",
+            ),
+          );
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         setIsRecording(false);
@@ -87,8 +149,9 @@ export function useRecorder() {
       };
 
       setSeconds(0);
-      setIsRecording(true);
+      secondsRef.current = 0;
       recorder.start();
+      setIsRecording(true);
       timerRef.current = window.setInterval(() => {
         setSeconds((current) => {
           if (current + 1 >= MAX_SECONDS) {
@@ -102,7 +165,11 @@ export function useRecorder() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       setStream(null);
+      setIsRecording(false);
       setError("Microphone access is needed to record an answer.");
+    } finally {
+      startingRef.current = false;
+      if (mountedRef.current) setStarting(false);
     }
   }
 
@@ -113,6 +180,10 @@ export function useRecorder() {
   }
 
   function reset() {
+    if (draftKey)
+      void deleteDraft(draftKey).catch(() =>
+        setError("Could not clear the device draft."),
+      );
     setAudioBlob(null);
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
@@ -123,6 +194,8 @@ export function useRecorder() {
   }
 
   return {
+    starting,
+    draftLoading,
     audioBlob,
     audioUrl,
     error,

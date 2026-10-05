@@ -5,6 +5,10 @@ export type MemoryNode = {
   question: string;
   transcript: string | null;
   mp3Url: string | null;
+  hasAudio?: boolean;
+  archivedAt?: string | null;
+  contentType?: string;
+  processingJobId?: string;
   gcsObjectName: string | null;
   timestamp: string;
   metadata: Record<string, unknown> | null;
@@ -23,6 +27,7 @@ export type MemoryNode = {
 export type InterviewThread = {
   id: string;
   title: string;
+  storyOptions?: import("../supabase/functions/_shared/story-options").StoryOptions;
   createdAt: string;
   updatedAt: string;
 };

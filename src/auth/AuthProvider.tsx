@@ -7,7 +7,7 @@ import {
   resolveSupabaseSession,
   type AuthConfig,
   type AuthConfigStatus,
-  type AuthUser
+  type AuthUser,
 } from "./identity";
 
 type AuthContextValue = {
@@ -25,13 +25,18 @@ type AuthContextValue = {
 };
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
-const config: AuthConfig = { authRequired: true, authConfigured: true, hasAllowedEmailsKey: true };
+const config: AuthConfig = {
+  authRequired: true,
+  authConfigured: true,
+  hasAllowedEmailsKey: true,
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<AuthUser | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [configStatus, setConfigStatus] = React.useState<AuthConfigStatus>("loading");
+  const [configStatus, setConfigStatus] =
+    React.useState<AuthConfigStatus>("loading");
 
   const bootstrap = React.useCallback(async () => {
     setLoading(true);
@@ -42,11 +47,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         return;
       }
-      await claimSupabaseAccess();
-      setUser(sessionUser);
+      const role = await claimSupabaseAccess();
+      setUser({ ...sessionUser, role });
     } catch (bootstrapError) {
       setUser(null);
-      setError(bootstrapError instanceof Error ? bootstrapError.message : "Could not verify sign-in.");
+      setError(
+        bootstrapError instanceof Error
+          ? bootstrapError.message
+          : "Could not verify sign-in.",
+      );
     } finally {
       setConfigStatus("loaded");
       setLoading(false);
@@ -55,23 +64,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => void bootstrap(), [bootstrap]);
 
-  const logout = React.useCallback(async (options?: { error?: string | null }) => {
-    await logoutIdentity();
-    setUser(null);
-    setError(options?.error ?? null);
-  }, []);
+  const logout = React.useCallback(
+    async (options?: { error?: string | null }) => {
+      await logoutIdentity();
+      setUser(null);
+      setError(options?.error ?? null);
+    },
+    [],
+  );
 
-  const value = React.useMemo<AuthContextValue>(() => ({
-    user,
-    loading,
-    ...config,
-    configStatus,
-    error,
-    loginWithGoogle,
-    logout,
-    retryBootstrap: bootstrap,
-    getAccessToken: getStoredAccessToken
-  }), [bootstrap, configStatus, error, loading, logout, user]);
+  const value = React.useMemo<AuthContextValue>(
+    () => ({
+      user,
+      loading,
+      ...config,
+      configStatus,
+      error,
+      loginWithGoogle,
+      logout,
+      retryBootstrap: bootstrap,
+      getAccessToken: getStoredAccessToken,
+    }),
+    [bootstrap, configStatus, error, loading, logout, user],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

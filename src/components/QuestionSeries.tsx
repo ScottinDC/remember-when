@@ -22,7 +22,7 @@ function QuestionSeries({
         </span>
       </div>
       <p className="px-5 pt-1 text-sm text-ink-secondary">
-        {"Earlier questions remain available in the tree and your profile."}
+        {"Earlier questions remain available in the chart and My recordings."}
       </p>
       <ol className="m-0 list-none p-3">
         {leaves.map((c) => (
