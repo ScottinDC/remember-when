@@ -20,7 +20,7 @@ Compatible dependency fixes have been applied. Five npm high-severity advisories
 
 ## Release gates
 
-Follow `SUPABASE.md` in order. Keep the existing project and back up both the database and actual Storage objects. Do not copy account emails or credentials into the public repository. The current Netlify site needs a coordinated release of the migrations, five functions and frontend. Local code or a passing GitHub/Netlify preview does not mean these backend changes are live.
+The coordinated database, five-function and frontend release was completed October 5, 2026; see the live evidence and remaining user checks in `SUPABASE.md`. Google login, the MFA gate and existing private-audio playback were verified on production. Future releases should follow that document in order. Keep the existing project and back up both the database and actual Storage objects. Do not copy account emails or credentials into the public repository. Local code or a passing GitHub/Netlify preview alone does not prove a production release.
 
 Before family use, verify:
 

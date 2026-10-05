@@ -12,7 +12,11 @@ An authenticated CLI export preserved the full database, password-free role defi
 
 The live project has Google sign-in and TOTP enrollment/verification enabled. No jobs were present in `cron.job` at inspection; do not claim a weekly digest schedule is active or create one without choosing its schedule. Other external schedulers have not been ruled out. The Free plan has no scheduled project backups. The private local backup is not an off-device backup.
 
-Production migrations and deployments remain pending a coordinated maintenance window. The local `config.toml` now explicitly records the function gateway settings and enables local TOTP testing. It remains a local development configuration: do not push its entire Auth configuration over the recovered hosted configuration.
+After the approved maintenance window, all four migrations were applied transactionally and recorded in the existing migration history. All five functions are active: `claim-access` v12, `process-answer` v18, `archive-audio` v1, `delete-answer` v10, and `send-weekly-digest` v12. Gateway JWT checks remain enabled for the four user-facing functions; the digest retains its dedicated scheduler-secret check. Netlify production deploy `6ac3b377594bce397cd47965` serves the updated app at the intended live URL.
+
+Live verification confirmed Google sign-in, the administrator MFA setup gate, personal-library loading, and playback of an existing private recording. Anonymous HTTP requests to all five functions, the archive tables and the admin RPC returned 401. The deployed HTML and every built asset matched the local build; security headers were present. A rollback-only database check also exercised the AAL1 rejection and AAL2 admin query. Actual authenticator enrollment, the member's first device recording, real AI completion and SendGrid delivery still need end-user verification. No digest schedule was created or test email sent.
+
+The local `config.toml` explicitly records the function gateway settings and enables local TOTP testing. It remains a local development configuration: do not push its entire Auth configuration over the recovered hosted configuration. Production was deployed manually from the tested build; GitHub PR #3 is still the source update, and the intended Netlify site still needs its repository connection reviewed before automatic releases are enabled.
 
 ## Ownership and recovery
 
