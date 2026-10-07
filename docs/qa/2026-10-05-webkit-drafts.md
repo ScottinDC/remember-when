@@ -15,3 +15,15 @@ The synthetic draft lookup returned absent both before and after refresh. Invest
 The UI confirmed the draft write failed before reload and IndexedDB had no keys. The storage implementation now persists audio as an ArrayBuffer with MIME type, preserving support for older Blob drafts. The operation queue includes byte conversion so a later discard cannot be reversed by a delayed save. The existing draft test checks this ordering; browser checks exercise MediaRecorder output.
 
 The byte-buffer change resolved the focused WebKit test. Repeated recording/refresh/upload/AI-retry checks pass with real synthetic MediaRecorder output. This confirms a WebKit Blob persistence compatibility issue in this test environment, not a missing UI selector. Physical iPhone validation remains separate.
+
+## Completion
+
+All 39 unit/database checks and 21 browser checks passed locally on October 5. The corrected frontend was deployed as `6ac3bbad94d417092f7d2300`; live HTML/assets matched the build, and ten anonymous API checks returned 401. Actual-device recording remains a separate check.
+
+## October 6 CI follow-up
+
+GitHub run 37329509820 passed 20/21 checks on Ubuntu. WebKit failed before `Stop recording` became visible, unlike the passing macOS recording run; this was not the prior draft-reload failure. CI now runs the same WebKit recording checks on macOS and Chromium desktop/mobile on Linux, with failure artifacts retained for diagnosis. This preserves the real MediaRecorder test rather than adding a skip or replacing it with fake audio bytes. The exact Linux media-startup cause was not established from the available log.
+
+The two MFA denial checks used a nonexistent export-button label, which made their absence assertions ineffective. They now use the actual label, assert no archive RPC is requested at AAL1, and include a positive AAL2 archive-load check.
+
+October 6 local validation: 39 unit/database checks, all 24 browser checks, TypeScript unused-code checking and the production build passed. The production JS/CSS asset names and contents remain unchanged by the cleanup. The default and headed suites contain only isolated tests; the production configuration lists four separate smoke checks. The npm audit reports zero known advisories after the source-map-js patch.

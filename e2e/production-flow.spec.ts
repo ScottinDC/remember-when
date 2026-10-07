@@ -3,22 +3,26 @@ import { expect, test } from "@playwright/test";
 const INTERNAL_ERROR = /Internal Error/i;
 
 test.describe("Supabase SPA — public smoke flow", () => {
-  test.beforeEach(({}, testInfo) => {
-    if (testInfo.project.name !== "production") test.skip();
-  });
-
   test("1. App shell loads without a legacy server error", async ({ page }) => {
     const response = await page.goto("/", { waitUntil: "domcontentloaded" });
     expect(response?.status(), "app HTTP status").toBe(200);
     await expect(page.locator("body")).not.toContainText(INTERNAL_ERROR);
   });
 
-  test("2. Unauthenticated visitors see the Supabase sign-in screen", async ({ page }) => {
+  test("2. Unauthenticated visitors see the Supabase sign-in screen", async ({
+    page,
+  }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Remember When" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Remember When" }),
+    ).toBeVisible();
     await expect(page.getByText("Private Family Archive")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Continue with Google" })).toBeEnabled({ timeout: 20_000 });
-    await expect(page.getByText(/Could not reach the server/i)).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Continue with Google" }),
+    ).toBeEnabled({ timeout: 20_000 });
+    await expect(
+      page.getByText(/Could not reach the server/i),
+    ).not.toBeVisible();
   });
 
   test("3. Google sign-in begins through Supabase Auth", async ({ page }) => {
@@ -26,8 +30,11 @@ test.describe("Supabase SPA — public smoke flow", () => {
     const button = page.getByRole("button", { name: "Continue with Google" });
     await expect(button).toBeEnabled({ timeout: 20_000 });
     await Promise.all([
-      page.waitForURL(/accounts\.google\.com|\.supabase\.co\/auth\/v1\/authorize/, { timeout: 20_000 }),
-      button.click()
+      page.waitForURL(
+        /accounts\.google\.com|\.supabase\.co\/auth\/v1\/authorize/,
+        { timeout: 20_000 },
+      ),
+      button.click(),
     ]);
   });
 

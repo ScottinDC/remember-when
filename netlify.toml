@@ -12,6 +12,7 @@
   targetPort = 5173
   port = 8888
   autoLaunch = false
+  framework = "#custom"
 
 [[redirects]]
   from = "/*"
@@ -21,6 +22,7 @@
 [[headers]]
   for = "/*"
   [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
     Referrer-Policy = "no-referrer"

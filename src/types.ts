@@ -36,9 +36,3 @@ export type InterviewState = {
   thread: InterviewThread;
   nodes: MemoryNode[];
 };
-
-export type QueuedRecording = {
-  questionId: string;
-  blob: Blob;
-  url: string;
-};

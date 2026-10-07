@@ -3,8 +3,6 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-export const usesSupabaseAuth = import.meta.env.VITE_AUTH_PROVIDER === "supabase";
-
 export const supabaseAuthClient: SupabaseClient | null =
   supabaseUrl && supabasePublishableKey
     ? createClient(supabaseUrl, supabasePublishableKey, {
@@ -18,14 +16,16 @@ export const supabaseAuthClient: SupabaseClient | null =
           // identity.ts restores the implicit callback explicitly. Disabling
           // the SDK's parallel handler avoids two consumers racing over the
           // same URL fragment during React bootstrap.
-          detectSessionInUrl: false
-        }
+          detectSessionInUrl: false,
+        },
       })
     : null;
 
 export function requireSupabaseAuthClient() {
   if (!supabaseAuthClient) {
-    throw new Error("Supabase Auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.");
+    throw new Error(
+      "Supabase Auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.",
+    );
   }
 
   return supabaseAuthClient;
