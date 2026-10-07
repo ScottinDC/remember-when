@@ -1,189 +1,209 @@
-import React from "react";
-import { Download, Loader2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
-import { answeredNodes, branchCaption, questionNumber } from "../lib/interview";
+import { useState } from "react";
 import type { MemoryNode } from "../types";
-
-type RecordingLibraryProps = {
-  nodes: MemoryNode[];
-  onDelete: (questionId: string) => void;
-  deletingId: string | null;
-};
-
-function downloadFilename(node: MemoryNode) {
-  return `remember-when-q${questionNumber(node)}.webm`;
-}
-
-async function downloadRecording(node: MemoryNode) {
-  if (!node.mp3Url) {
-    return;
-  }
-  const response = await fetch(node.mp3Url);
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = downloadFilename(node);
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-async function downloadAll(recordings: MemoryNode[]) {
-  for (const node of recordings) {
-    if (!node.mp3Url || node.status !== "answered") {
-      continue;
-    }
-    await downloadRecording(node);
-    await new Promise((resolve) => setTimeout(resolve, 400));
-  }
-}
-
-function RecordingRow({
-  node,
-  deleting,
+import { RecordingPlayer } from "./RecordingPlayer";
+import { requireSupabaseAuthClient } from "../auth/supabase";
+export function RecordingLibrary({
+  nodes,
   onDelete,
-  playingId,
-  onPlay,
-  onPause
+  onRetry,
+  onArchive,
+  onPurge,
+  deletingId,
 }: {
-  node: MemoryNode;
-  deleting: boolean;
+  nodes: MemoryNode[];
   onDelete: (id: string) => void;
-  playingId: string | null;
-  onPlay: (id: string, url: string) => void;
-  onPause: () => void;
+  deletingId: string | null;
+  onRetry?: (id: string) => Promise<void>;
+  onArchive?: (id: string, archived: boolean) => Promise<void>;
+  onPurge?: (id: string) => Promise<void>;
 }) {
-  const isPlaying = playingId === node.id;
-  const canPlay = Boolean(node.mp3Url && node.status === "answered");
-
-  return (
-    <article className="border-t border-line-soft/80 py-3 first:border-t-0 first:pt-0">
-      <div className="mb-1.5 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">{branchCaption(node)}</p>
-          <h3 className="mt-0.5 text-sm font-medium leading-snug text-ink">{node.question}</h3>
-        </div>
-        {node.status === "processing" ? (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-navy-light" aria-hidden="true" />
-        ) : null}
-      </div>
-
-      {node.transcript ? (
-        <p className="mb-2.5 text-sm leading-relaxed text-ink-muted">{node.transcript}</p>
-      ) : null}
-
-      <div className="flex items-center gap-1.5">
-        <button
-          aria-label="Play recording"
-          className="btn-icon"
-          disabled={!canPlay || isPlaying}
-          onClick={() => node.mp3Url && onPlay(node.id, node.mp3Url)}
-          type="button"
-        >
-          <Play className="h-3.5 w-3.5" />
-        </button>
-        <button
-          aria-label="Pause recording"
-          className="btn-icon"
-          disabled={!canPlay || !isPlaying}
-          onClick={onPause}
-          type="button"
-        >
-          <Pause className="h-3.5 w-3.5" />
-        </button>
-        <button
-          aria-label="Re-record response"
-          className="btn-icon text-navy-light hover:border-navy-light/40 hover:bg-page"
-          disabled={deleting || node.status === "processing"}
-          onClick={() => onDelete(node.id)}
-          title="Re-record"
-          type="button"
-        >
-          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-        </button>
-        <button
-          aria-label="Download recording"
-          className="btn-icon"
-          disabled={!canPlay}
-          onClick={() => downloadRecording(node)}
-          type="button"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </article>
-  );
-}
-
-export function RecordingLibrary({ nodes, onDelete, deletingId }: RecordingLibraryProps) {
-  const recordings = answeredNodes(nodes).filter((node) => node.mp3Url || node.status === "processing");
-  const completed = recordings.filter((node) => node.status === "answered" && node.mp3Url);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  const [playingId, setPlayingId] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    return () => {
-      audioRef.current?.pause();
-    };
-  }, []);
-
-  function handlePlay(id: string, url: string) {
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-      audioRef.current.addEventListener("ended", () => setPlayingId(null));
+  const [filter, setFilter] = useState(""),
+    [archived, setArchived] = useState(false),
+    [busy, setBusy] = useState<string | null>(null),
+    [error, setError] = useState("");
+  const [versions, setVersions] = useState<
+    Record<string, { id: string; created_at: string; status: string }[]>
+  >({});
+  const recordings = nodes
+    .filter((n) => n.hasAudio || n.mp3Url)
+    .filter((n) => Boolean(n.archivedAt) === archived)
+    .filter((n) =>
+      `${n.question} ${n.transcript ?? ""}`
+        .toLowerCase()
+        .includes(filter.toLowerCase()),
+    )
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  async function action(id: string, operation: () => Promise<void>) {
+    setBusy(id);
+    setError("");
+    try {
+      await operation();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setBusy(null);
     }
-    audioRef.current.src = url;
-    audioRef.current.play();
-    setPlayingId(id);
   }
-
-  function handlePause() {
-    audioRef.current?.pause();
-    setPlayingId(null);
+  async function history(id: string) {
+    const { data, error } = await requireSupabaseAuthClient()
+      .from("recording_jobs")
+      .select("id,created_at,status")
+      .eq("response_id", id)
+      .order("created_at", { ascending: false });
+    if (error) throw Error("Could not load earlier recordings.");
+    setVersions((old) => ({ ...old, [id]: data ?? [] }));
   }
-
   return (
     <section className="form-card card-body">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-baseline gap-2">
-          <h2 className="panel-title">Saved Recordings</h2>
-          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint tabular-nums">
-            {String(completed.length).padStart(2, "0")} saved
-          </span>
-        </div>
-        <button
-          aria-label="Download all recordings"
-          className="btn-icon"
-          disabled={completed.length === 0}
-          onClick={() => downloadAll(completed)}
-          type="button"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </button>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="panel-title">My recordings</h2>
+        <span>{recordings.length} recording{recordings.length === 1 ? "" : "s"}</span>
       </div>
-
+      <p className="mt-2 mb-4 text-ink-secondary">
+        Your recordings, newest first. Listen, download, redo an answer, or
+        remove a recording.
+      </p>
+      <div className="library-controls">
+        <label>
+          Find a memory
+          <input
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search questions and transcripts"
+          />
+        </label>
+        <label className="library-toggle flex gap-2 items-center">
+          <input
+            type="checkbox"
+            checked={archived}
+            onChange={(e) => setArchived(e.target.checked)}
+          />
+          Show archived recordings
+        </label>
+      </div>
+      {error && (
+        <p role="alert" className="text-red-800 my-3">
+          {error}
+        </p>
+      )}
       {recordings.length === 0 ? (
-        <div className="flex items-center gap-2.5 border-t border-line-soft/80 pt-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-dashed border-line-hair bg-page">
-            <Volume2 className="h-4 w-4 text-ink-placeholder" />
-          </div>
-          <p className="m-0 text-sm leading-relaxed text-ink-placeholder">
-            Recordings will appear here as each response is saved.
-          </p>
-        </div>
+        <p className="py-8 text-ink-secondary">
+          {filter
+            ? "No recordings match your search."
+            : archived
+              ? "No archived recordings."
+              : "Your first saved recording will appear here."}
+        </p>
       ) : (
-        <div>
-          {recordings.map((node) => (
-            <RecordingRow
-              deleting={deletingId === node.id}
-              key={node.id}
-              node={node}
-              onDelete={onDelete}
-              onPause={handlePause}
-              onPlay={handlePlay}
-              playingId={playingId}
-            />
-          ))}
-        </div>
+        recordings.map((node) => (
+          <article key={node.id} className="recording-entry">
+            <p className="text-sm text-ink-secondary">
+              Question {node.sequenceOrder} ·{" "}
+              {new Date(node.timestamp).toLocaleDateString()} · Recording saved
+            </p>
+            <h3 className="font-serif text-xl my-2">{node.question}</h3>
+            {node.transcript ? (
+              <p className="whitespace-pre-wrap text-ink-secondary mb-4">
+                {node.transcript}
+              </p>
+            ) : (
+              <p className="text-ink-secondary mb-4">
+                {node.status === "failed"
+                  ? "The transcript needs another attempt. Your audio is safe."
+                  : "The transcript is being prepared. Your audio is safe."}
+              </p>
+            )}
+            {Boolean(node.metadata?.deletePending) ? (
+              <p role="alert">
+                Deletion is unfinished. Retry Delete permanently to finish
+                removing this recording.
+              </p>
+            ) : (
+              <RecordingPlayer
+                responseId={node.id}
+                label={`Recording for question ${node.sequenceOrder}`}
+              />
+            )}
+            <div className="flex flex-wrap gap-3 mt-4">
+              {!archived && (
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  disabled={busy === node.id || deletingId === node.id}
+                  onClick={() => onDelete(node.id)}
+                >
+                  Record a replacement
+                </button>
+              )}
+              {!archived && node.status !== "answered" && onRetry && (
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  disabled={busy === node.id}
+                  onClick={() => action(node.id, () => onRetry(node.id))}
+                >
+                  {busy === node.id
+                    ? "Working…"
+                    : "Retry transcript & next question"}
+                </button>
+              )}
+              {onArchive && (
+                <button
+                  type="button"
+                  disabled={busy === node.id}
+                  onClick={() =>
+                    action(node.id, () => onArchive(node.id, !archived))
+                  }
+                >
+                  {archived ? "Restore recording" : "Archive recording"}
+                </button>
+              )}
+              {onPurge && (
+                <button
+                  type="button"
+                  className="text-red-800"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Permanently delete this answer's audio, transcript and all earlier takes? This cannot be undone. Its question and follow-up questions will remain so you can record again. Copies already downloaded or emailed cannot be recalled.",
+                      )
+                    )
+                      void action(node.id, () => onPurge(node.id));
+                  }}
+                >
+                  Delete permanently
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={busy === node.id}
+                onClick={() => action(node.id, () => history(node.id))}
+              >
+                Earlier recordings
+              </button>
+            </div>
+            {versions[node.id] && (
+              <div className="mt-4">
+                <h4 className="font-medium">Saved versions</h4>
+                {versions[node.id].map((version) => (
+                  <details key={version.id} className="py-2">
+                    <summary>
+                      {new Date(version.created_at).toLocaleString()} ·{" "}
+                      {version.status}
+                    </summary>
+                    <RecordingPlayer
+                      responseId={node.id}
+                      jobId={version.id}
+                      label="Earlier recording"
+                    />
+                  </details>
+                ))}
+              </div>
+            )}
+          </article>
+        ))
       )}
     </section>
   );

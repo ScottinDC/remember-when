@@ -1,37 +1,38 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const productionBaseURL = process.env.E2E_PRODUCTION_URL ?? "https://stories-remember-when.netlify.app";
-const localBaseURL = process.env.E2E_LOCAL_URL ?? "http://127.0.0.1:5173";
+const localURL = "http://127.0.0.1:5174";
 
+// Default tests are isolated from production and use a synthetic backend.
 export default defineConfig({
   testDir: "e2e",
+  testMatch: "archive.spec.ts",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   workers: 1,
   reporter: [["list"], ["html", { open: "never", outputFolder: "e2e-report" }]],
-  timeout: 60_000,
-  expect: { timeout: 15_000 },
+  timeout: 45000,
+  expect: { timeout: 12000 },
+  outputDir: "e2e-results",
   use: {
-    trace: "on-first-retry",
+    baseURL: localURL,
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "off"
+    video: "off",
+    serviceWorkers: "block",
+  },
+  webServer: {
+    command: "npx vite --host 127.0.0.1 --port 5174",
+    url: localURL,
+    reuseExistingServer: false,
+    env: {
+      VITE_SUPABASE_URL: "http://127.0.0.1:54399",
+      VITE_SUPABASE_PUBLISHABLE_KEY: "synthetic-public-test-key",
+    },
   },
   projects: [
-    {
-      name: "production",
-      use: {
-        ...devices["Desktop Chrome"],
-        baseURL: productionBaseURL
-      }
-    },
-    {
-      name: "local",
-      use: {
-        ...devices["Desktop Chrome"],
-        baseURL: localBaseURL
-      }
-    }
+    { name: "local", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "webkit", use: { ...devices["iPhone 13"] } },
   ],
-  outputDir: "e2e-results"
 });

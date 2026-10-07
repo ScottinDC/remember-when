@@ -1,6 +1,7 @@
 import React from "react";
+import { AdminArchive } from "./components/AdminArchive";
 import { Loader2 } from "lucide-react";
-import { ApiAuthError, fetchInterview } from "./api";
+import { fetchInterview } from "./api";
 import { useAuth } from "./auth/AuthProvider";
 import { AuthStatus } from "./auth/LoginScreen";
 import { AppHeader } from "./components/AppHeader";
@@ -10,6 +11,51 @@ import { countByStatus } from "./lib/interview";
 import type { InterviewState } from "./types";
 
 export function App() {
+  const { user } = useAuth();
+  const [admin, setAdmin] = React.useState(user?.role === "admin");
+  const [busy, setBusy] = React.useState(false);
+  return (
+    <>
+      <nav className="app-navigation" aria-label="Archive areas">
+        {user?.role === "admin" && (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={admin}
+              onClick={() => setAdmin(true)}
+            >
+              Administration
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={!admin}
+              onClick={() => setAdmin(false)}
+            >
+              My interview
+            </button>
+          </>
+        )}
+      </nav>
+      {admin && user?.role === "admin" ? (
+        <main className="mx-auto max-w-shell px-5 pb-10">
+          <AuthStatus />
+          <AdminArchive />
+        </main>
+      ) : (
+        <InterviewApp busy={busy} onBusyChange={setBusy} />
+      )}
+    </>
+  );
+}
+function InterviewApp({
+  onBusyChange,
+  busy,
+}: {
+  onBusyChange: (busy: boolean) => void;
+  busy: boolean;
+}) {
   const { logout } = useAuth();
   const [state, setState] = React.useState<InterviewState | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -18,12 +64,10 @@ export function App() {
   React.useEffect(() => {
     fetchInterview()
       .then(setState)
-      .catch(async (err: unknown) => {
-        if (err instanceof ApiAuthError) {
-          await logout({ error: err.message });
-          return;
-        }
-        setError(err instanceof Error ? err.message : "Could not load the interview.");
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error ? err.message : "Could not load the interview.",
+        );
       })
       .finally(() => setLoading(false));
   }, [logout]);
@@ -43,7 +87,9 @@ export function App() {
     return (
       <main className="grid min-h-screen place-items-center px-4">
         <div className="flex max-w-md flex-col items-center gap-4 text-center">
-          <p className="text-base text-[#9b2c2c]">{error ?? "Could not load the interview."}</p>
+          <p className="text-base text-[#9b2c2c]">
+            {error ?? "Could not load the interview."}
+          </p>
           <div className="flex w-full flex-col gap-3">
             <button
               className="btn-primary"
@@ -52,12 +98,12 @@ export function App() {
                 setError(null);
                 fetchInterview()
                   .then(setState)
-                  .catch(async (err: unknown) => {
-                    if (err instanceof ApiAuthError) {
-                      await logout({ error: err.message });
-                      return;
-                    }
-                    setError(err instanceof Error ? err.message : "Could not load the interview.");
+                  .catch((err: unknown) => {
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : "Could not load the interview.",
+                    );
                   })
                   .finally(() => setLoading(false));
               }}
@@ -65,7 +111,11 @@ export function App() {
             >
               Try again
             </button>
-            <button className="btn-secondary" onClick={() => void logout({ error: null })} type="button">
+            <button
+              className="btn-secondary"
+              onClick={() => void logout({ error: null })}
+              type="button"
+            >
               Sign out and try again
             </button>
           </div>
@@ -78,8 +128,8 @@ export function App() {
 
   return (
     <main className="min-h-screen px-5 py-8 md:px-6">
-      <div className="mx-auto flex w-full max-w-shell flex-col gap-7">
-        <AuthStatus />
+      <div className="mx-auto flex w-full max-w-shell flex-col gap-5">
+        <AuthStatus disabled={busy} />
         <AppHeader
           answeredCount={countByStatus(nodes, "answered")}
           pendingCount={countByStatus(nodes, "pending")}
@@ -88,10 +138,17 @@ export function App() {
         />
 
         {error ? (
-          <div className="rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-base text-[#9b2c2c]">{error}</div>
+          <div className="rounded border border-[#f0caca] bg-[#fff8f8] px-4 py-3 text-base text-[#9b2c2c]">
+            {error}
+          </div>
         ) : null}
 
-        <InterviewForm onStateChange={setState} setError={setError} state={state} />
+        <InterviewForm
+          onBusyChange={onBusyChange}
+          onStateChange={setState}
+          setError={setError}
+          state={state}
+        />
       </div>
     </main>
   );

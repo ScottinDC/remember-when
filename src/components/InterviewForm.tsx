@@ -1,188 +1,412 @@
-import React from "react";
-import { Check, Loader2, Mic, Pause, RotateCcw, Save } from "lucide-react";
-import {
-  answeredNodes,
-  chooseNextQuestion,
-  formatTime,
-  FOUNDATION_COUNT,
-  promptLabel,
-  questionNumber,
-  sortBySeries
-} from "../lib/interview";
+import { StoryWorkspace } from "./StoryWorkspace";
+import { useEffect, useState } from "react";
+import { Mic, Pause, Save } from "lucide-react";
 import type { InterviewState } from "../types";
+import { saveAnswer, regenerateQuestion } from "../api";
+import {
+  retryProcessing,
+  setArchived,
+  passQuestion,
+  deleteSupabaseAnswer,
+  type SaveStage,
+} from "../answer-store";
+import { chooseNextQuestion, formatTime } from "../lib/interview";
 import { useRecorder } from "../useRecorder";
-import { deleteAnswer, saveAnswer } from "../api";
 import { QuestionSeries } from "./QuestionSeries";
-import { RecordingLibrary } from "./RecordingLibrary";
 import { SankeyDiagram } from "./SankeyDiagram";
-
-type InterviewFormProps = {
+import { RecordingLibrary } from "./RecordingLibrary";
+import { RecordingPlayer } from "./RecordingPlayer";
+import { AudioWaveform } from "./AudioWaveform";
+type Props = {
   state: InterviewState;
   onStateChange: (state: InterviewState) => void;
-  setError: (message: string | null) => void;
+  setError: (error: string | null) => void;
+  onBusyChange?: (busy: boolean) => void;
 };
-
-export function InterviewForm({ state, onStateChange, setError }: InterviewFormProps) {
-  const nodes = state.nodes;
-  const sorted = sortBySeries(nodes);
-  const saved = answeredNodes(nodes);
-  const activeQuestion = chooseNextQuestion(nodes);
-  const recorder = useRecorder();
-  const [saving, setSaving] = React.useState(false);
-  const [deletingId, setDeletingId] = React.useState<string | null>(null);
-  const [activeQuestionId, setActiveQuestionId] = React.useState<string | null>(activeQuestion?.id ?? null);
-
-  React.useEffect(() => {
-    if (!activeQuestionId && activeQuestion) {
-      setActiveQuestionId(activeQuestion.id);
+export function InterviewForm({
+  state,
+  onStateChange,
+  setError,
+  onBusyChange,
+}: Props) {
+  const nodes = state.nodes.filter((n) => !n.archivedAt),
+    next = chooseNextQuestion(nodes);
+  const [activeId, setActiveId] = useState<string | null>(next?.id ?? null),
+    [profile, setProfile] = useState(false),
+    [story, setStory] = useState(false),
+    [storyBusy, setStoryBusy] = useState(false),
+    [replacing, setReplacing] = useState(false),
+    [saving, setSaving] = useState(false),
+    [stage, setStage] = useState<SaveStage | null>(null),
+    [notice, setNotice] = useState("");
+  const current = nodes.find((n) => n.id === activeId) ?? next;
+  const recorder = useRecorder(
+    current ? `${state.thread.id}:${current.id}` : null,
+  );
+  const busy =
+    saving ||
+    storyBusy ||
+    recorder.draftLoading ||
+    recorder.starting ||
+    recorder.isRecording ||
+    Boolean(recorder.audioBlob);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
+  const saved = nodes.filter((n) => n.hasAudio || n.mp3Url),
+    foundation = nodes.filter((n) => n.depth === 0).slice(0, 5);
+  const hasAudio = Boolean(current?.hasAudio || current?.mp3Url);
+  async function save() {
+    if (!current || !recorder.audioBlob) return;
+    setSaving(true);
+    setError(null);
+    setNotice("");
+    try {
+      const result = await saveAnswer(current.id, recorder.audioBlob, setStage);
+      recorder.reset();
+      onStateChange(result.state);
+      setReplacing(false);
+      setNotice(
+        result.warning ?? "Recording saved. Your next question is ready.",
+      );
+      setActiveId(
+        chooseNextQuestion(result.state.nodes.filter((n) => !n.archivedAt))
+          ?.id ?? current.id,
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not save the recording.",
+      );
+    } finally {
+      setSaving(false);
+      setStage(null);
     }
-  }, [activeQuestion, activeQuestionId]);
-
-  const current =
-    nodes.find((node) => node.id === activeQuestionId && node.status === "pending") ?? activeQuestion;
-
-  const progressSteps = sorted.filter((node) => node.depth === 0).slice(0, FOUNDATION_COUNT);
-  const foundationSaved = saved.filter((node) => node.depth === 0).length;
-  const progress = Math.min(100, (recorder.seconds / recorder.maxSeconds) * 100);
-
-  async function handleSaveCurrent() {
-    if (!current || !recorder.audioBlob) {
-      return;
+  }
+  function select(id: string) {
+    if (!busy) {
+      setActiveId(id);
+      setReplacing(false);
     }
-
+  }
+  async function regenerate() {
+    if (!current) return;
     setSaving(true);
     setError(null);
     try {
-      const result = await saveAnswer(current.id, recorder.audioBlob);
-      recorder.reset();
-      onStateChange(result.state);
-      setActiveQuestionId(chooseNextQuestion(result.state.nodes)?.id ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the response.");
+      onStateChange((await regenerateQuestion(current.id)).state);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not change the question.",
+      );
     } finally {
       setSaving(false);
     }
   }
-
-  async function handleDelete(questionId: string) {
-    setDeletingId(questionId);
-    setError(null);
-    try {
-      const result = await deleteAnswer(questionId);
-      onStateChange(result.state);
-      setActiveQuestionId(chooseNextQuestion(result.state.nodes)?.id ?? questionId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete the response.");
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
   return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <QuestionSeries activeQuestionId={activeQuestionId} nodes={sorted} onSelect={setActiveQuestionId} />
-
-        <aside className="flex flex-col gap-4">
-          <section className="form-card card-body">
-            <div className="mb-4 flex items-center gap-0 font-mono">
-              {progressSteps.map((step, index) => {
-                const stepAnswered = saved.some(
-                  (node) => node.sequenceOrder === step.sequenceOrder || node.id === step.id
-                );
-                const isActive = current?.sequenceOrder === step.sequenceOrder;
-                return (
-                  <React.Fragment key={step.id}>
-                    <div
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular-nums ${
-                        stepAnswered
-                          ? "bg-navy text-white"
-                          : isActive
-                            ? "border-[1.5px] border-line-hair bg-white text-ink-faint ring-2 ring-navy/20"
-                            : "border-[1.5px] border-line-hair bg-white text-[#b3ada3]"
-                      }`}
+    <div className="flex flex-col gap-6">
+      <nav
+        className="flex flex-wrap gap-3 border-b border-ink pb-4"
+        aria-label="Interview navigation"
+      >
+        <button
+          type="button"
+          disabled={busy}
+          className={profile || story ? "btn-secondary" : "btn-primary !w-auto"}
+          onClick={() => {
+            setProfile(false);
+            setStory(false);
+          }}
+        >
+          Record a memory
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          className={profile ? "btn-primary !w-auto" : "btn-secondary"}
+          onClick={() => {
+            setProfile(true);
+            setStory(false);
+          }}
+        >
+          My recordings
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          className={story ? "btn-primary !w-auto" : "btn-secondary"}
+          onClick={() => {
+            setStory(true);
+            setProfile(false);
+          }}
+        >
+          My story & downloads
+        </button>
+      </nav>
+      {notice && (
+        <p role="status" className="saved-notice">
+          {notice}
+        </p>
+      )}
+      {story ? (
+        <StoryWorkspace
+          state={state}
+          onStateChange={onStateChange}
+          onBusyChange={setStoryBusy}
+        />
+      ) : profile ? (
+        <RecordingLibrary
+          nodes={state.nodes}
+          deletingId={null}
+          onDelete={(id) => {
+            setActiveId(id);
+            setReplacing(true);
+            setProfile(false);
+          }}
+          onRetry={async (id) => {
+            onStateChange((await retryProcessing(id)).state);
+          }}
+          onPurge={async (id) => {
+            onStateChange((await deleteSupabaseAnswer(id)).state);
+          }}
+          onArchive={async (id, value) => {
+            onStateChange((await setArchived(id, value)).state);
+          }}
+        />
+      ) : (
+        <>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+            <QuestionSeries
+              nodes={nodes}
+              activeQuestionId={current?.id ?? null}
+              onSelect={select}
+            />
+            <aside className="order-first lg:order-none">
+              <section className="form-card card-body">
+                <div className="flex justify-between items-baseline gap-3 mb-4">
+                  <h2 className="panel-title">Your next memory</h2>
+                  <span className="text-sm text-ink-secondary">
+                    {saved.length} saved
+                  </span>
+                </div>
+                <div
+                  className="flex gap-3 mb-5"
+                  aria-label="Starting questions"
+                >
+                  {foundation.map((n) => (
+                    <button
+                      type="button"
+                      key={n.id}
+                      disabled={busy}
+                      onClick={() => select(n.id)}
+                      aria-label={`Open question ${n.sequenceOrder}`}
+                      aria-current={n.id === current?.id ? "step" : undefined}
+                      className="question-step"
                     >
-                      {stepAnswered ? <Check className="h-3.5 w-3.5" /> : index + 1}
-                    </div>
-                    {index < progressSteps.length - 1 ? (
-                      <div className={`h-[1.5px] flex-1 ${stepAnswered ? "bg-navy/50" : "bg-line-hair"}`} />
-                    ) : null}
-                  </React.Fragment>
-                );
-              })}
-            </div>
-
-            <div className="mb-4 flex items-baseline justify-between border-b border-line-soft pb-3">
-              <h2 className="panel-title">Current Question</h2>
-              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint tabular-nums">
-                {String(foundationSaved).padStart(2, "0")} / {String(progressSteps.length).padStart(2, "0")} saved
-              </span>
-            </div>
-
-            {current ? (
-              <div className="space-y-4">
-                <div>
-                  <p className="field-label mb-2">{promptLabel(current)}</p>
-                  <p className="text-lg font-medium leading-snug text-ink">{current.question}</p>
+                      {n.hasAudio ? "✓" : n.sequenceOrder}
+                    </button>
+                  ))}
                 </div>
-
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between font-mono">
-                    <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-                      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-record" />
-                      Recording
-                    </span>
-                    <span className="text-xs tabular-nums text-ink-secondary">
-                      {formatTime(recorder.seconds)}{" "}
-                      <span className="text-[#b3ada3]">/ {formatTime(recorder.maxSeconds)}</span>
-                    </span>
-                  </div>
-                  <div className="mb-4 h-1 overflow-hidden rounded-sm bg-line-soft">
-                    <div className="h-full bg-navy transition-all" style={{ width: `${progress}%` }} />
-                  </div>
-                </div>
-
-                {recorder.error ? <p className="text-sm text-[#9b2c2c]">{recorder.error}</p> : null}
-
-                {recorder.audioUrl ? (
-                  <div className="space-y-3">
-                    <audio controls src={recorder.audioUrl}>
-                      <track kind="captions" />
-                    </audio>
-                    <div className="flex flex-wrap gap-2">
-                      <button className="btn-secondary !w-auto" onClick={recorder.reset} type="button">
-                        <RotateCcw className="h-4 w-4" />
-                        Re-record
-                      </button>
-                      <button className="btn-primary !w-auto" disabled={saving} onClick={handleSaveCurrent} type="button">
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save response
-                      </button>
-                    </div>
+                {current ? (
+                  <div className="space-y-4">
+                    <p className="field-label">
+                      Question {current.sequenceOrder}
+                    </p>
+                    <p className="font-serif text-2xl leading-relaxed">
+                      {current.question}
+                    </p>
+                    {hasAudio && !replacing && !recorder.audioBlob ? (
+                      <>
+                        <p className="saved-notice">
+                          Recording saved
+                          {current.status === "answered"
+                            ? ""
+                            : ". Your transcript or next question is still pending."}
+                        </p>
+                        <RecordingPlayer
+                          responseId={current.id}
+                          label={`Question ${current.sequenceOrder}`}
+                        />
+                        <button
+                          className="btn-secondary"
+                          type="button"
+                          onClick={() => setReplacing(true)}
+                        >
+                          Record a replacement
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {replacing && (
+                          <p className="text-sm text-ink-secondary">
+                            Your previous recording stays in Earlier recordings
+                            after you save a replacement.
+                          </p>
+                        )}
+                        {recorder.isRecording && recorder.stream && (
+                          <AudioWaveform stream={recorder.stream} />
+                        )}
+                        <div
+                          className="flex justify-between text-sm"
+                          role="status"
+                        >
+                          <span>
+                            {stage === "processing"
+                              ? "Recording saved · preparing transcript"
+                              : stage === "saving"
+                                ? "Saving audio…"
+                                : stage === "refreshing"
+                                  ? "Updating your library…"
+                                  : recorder.isRecording
+                                    ? "Recording"
+                                    : recorder.audioBlob
+                                      ? "Draft ready to save"
+                                      : "Ready to record"}
+                          </span>
+                          <span>{formatTime(recorder.seconds)} / 05:00</span>
+                        </div>
+                        {recorder.error && (
+                          <p role="alert" className="text-red-800">
+                            {recorder.error}
+                          </p>
+                        )}
+                        {recorder.audioBlob ? (
+                          <>
+                            <audio
+                              controls
+                              src={recorder.audioUrl ?? undefined}
+                              aria-label="Preview your recording"
+                            />
+                            <div className="flex flex-wrap gap-3">
+                              <button
+                                className="btn-primary !w-auto"
+                                disabled={saving}
+                                type="button"
+                                onClick={save}
+                              >
+                                <Save className="h-4 w-4" />
+                                {saving ? "Saving…" : "Save recording"}
+                              </button>
+                              <button
+                                className="btn-secondary"
+                                disabled={saving}
+                                type="button"
+                                onClick={recorder.reset}
+                              >
+                                Discard draft
+                              </button>
+                            </div>
+                            <p className="text-sm text-ink-secondary">
+                              Stopped recordings are kept as drafts on this
+                              device until you save or discard them.
+                            </p>
+                          </>
+                        ) : (
+                          <button
+                            className={
+                              recorder.isRecording
+                                ? "btn-danger"
+                                : "btn-primary"
+                            }
+                            type="button"
+                            disabled={
+                              saving ||
+                              recorder.draftLoading ||
+                              recorder.starting
+                            }
+                            onClick={
+                              recorder.isRecording
+                                ? recorder.stop
+                                : recorder.start
+                            }
+                          >
+                            {recorder.isRecording ? (
+                              <Pause className="h-4 w-4" />
+                            ) : (
+                              <Mic className="h-4 w-4" />
+                            )}
+                            {recorder.draftLoading
+                              ? "Checking saved draft…"
+                              : recorder.isRecording
+                                ? "Stop recording"
+                                : "Record response"}
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {current.status === "pending" && !hasAudio && (
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={regenerate}
+                        >
+                          Try a different question
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            setSaving(true);
+                            setError(null);
+                            try {
+                              const passed = !current.metadata?.skippedAt;
+                              const result = await passQuestion(
+                                current.id,
+                                passed,
+                              );
+                              onStateChange(result.state);
+                              setActiveId(
+                                passed
+                                  ? (chooseNextQuestion(result.state.nodes)
+                                      ?.id ?? null)
+                                  : current.id,
+                              );
+                              setNotice(
+                                passed
+                                  ? "Question passed for now. You can return to it from the chart."
+                                  : "Question ready when you are.",
+                              );
+                            } catch (e) {
+                              setError(
+                                e instanceof Error
+                                  ? e.message
+                                  : "Could not pass this question.",
+                              );
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          {current.metadata?.skippedAt
+                            ? "Return to this question"
+                            : "Pass for now"}
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-sm text-ink-secondary">
+                      When you save, OpenAI processes your audio to create a
+                      transcript and suggest a follow-up question.
+                    </p>
                   </div>
                 ) : (
-                  <button
-                    className={recorder.isRecording ? "btn-danger" : "btn-primary"}
-                    onClick={recorder.isRecording ? recorder.stop : recorder.start}
-                    type="button"
-                  >
-                    {recorder.isRecording ? <Pause className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                    {recorder.isRecording ? "Stop recording" : "Record response"}
-                  </button>
+                  <p>
+                    No unanswered questions are waiting. Open My recordings to
+                    listen, or select a passed question in the chart to return
+                    to it.
+                  </p>
                 )}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-muted">
-                All current questions are saved. Choose another from the question series.
-              </p>
-            )}
-          </section>
-
-          <RecordingLibrary deletingId={deletingId} nodes={nodes} onDelete={handleDelete} />
-        </aside>
-      </div>
-
-      <SankeyDiagram nodes={nodes} />
+              </section>
+            </aside>
+          </div>
+          <SankeyDiagram
+            nodes={nodes}
+            activeQuestionId={current?.id}
+            onSelect={select}
+            disabled={busy}
+          />
+        </>
+      )}
     </div>
   );
 }

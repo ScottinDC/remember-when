@@ -4,10 +4,21 @@ data/
 .tools/
 .gcloud-config/
 .secrets/
+secrets/
 .env
 .env.local
 .DS_Store
 npm-debug.log*
+
+# IDE - local settings, do not commit
+.idea/
+.vscode/
+*.iml
+.cursor/
+*.code-workspace
+
+# Local - personal notes and copied project artifacts, do not commit
+local/
 
 # Local Netlify folder
 .netlify
@@ -17,3 +28,29 @@ e2e-results/
 e2e-report/
 playwright-report/
 test-results/
+
+# --- Added by template adoption (vite-express) ---
+# Agent-local state
+.agents/cache/
+.agents/tmp/
+.agents/local/
+graphify-out/
+.graphify/
+
+# MCP configs with secrets
+**/.mcp.json
+**/mcp.json
+**/mcp_config.json
+**/mcp.local.json
+!**/mcp.example.json
+
+# Env variants
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Coverage & reports
+coverage/
+.nyc_output/
+*.lcov

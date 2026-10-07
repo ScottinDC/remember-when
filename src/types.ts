@@ -5,11 +5,18 @@ export type MemoryNode = {
   question: string;
   transcript: string | null;
   mp3Url: string | null;
+  hasAudio?: boolean;
+  archivedAt?: string | null;
+  contentType?: string;
+  processingJobId?: string;
   gcsObjectName: string | null;
   timestamp: string;
   metadata: Record<string, unknown> | null;
-  status: "pending" | "processing" | "answered";
+  status: "pending" | "processing" | "answered" | "failed";
   sequenceOrder: number;
+  treeOrder: number;
+  branchRootOrder: number;
+  questionCode: string;
   depth: number;
   generation: number;
   branchRootId: string;
@@ -20,6 +27,7 @@ export type MemoryNode = {
 export type InterviewThread = {
   id: string;
   title: string;
+  storyOptions?: import("../supabase/functions/_shared/story-options").StoryOptions;
   createdAt: string;
   updatedAt: string;
 };
@@ -27,10 +35,4 @@ export type InterviewThread = {
 export type InterviewState = {
   thread: InterviewThread;
   nodes: MemoryNode[];
-};
-
-export type QueuedRecording = {
-  questionId: string;
-  blob: Blob;
-  url: string;
 };
