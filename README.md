@@ -122,3 +122,13 @@ Use `force=1` to resend even if this week's digest already went out. Without new
 5. OpenAI transcribes the audio.
 6. The transcript, biography, and conversation tree are sent to the OpenAI Responses API.
 7. One follow-up question is saved as a child of the answered question.
+
+## Work tracking
+
+
+All feature requests, housekeeping, QA, penetration testing, security remediation
+and release work run through the [Edit Request Jira board](https://scottsworkspace-43475593.atlassian.net/jira/software/projects/KAN/boards/1).
+Start with a `KAN` issue labeled `remember-when`, link implementation and verification evidence, and keep
+its status current through Composio. See the [Jira workflow](docs/JIRA-WORKFLOW.md)
+and [agent instructions](AGENTS.md).
+
